@@ -1,0 +1,2638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Reloading Master</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --accent: #d29922;
+  --accent2: #e6a817;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --success: #3fb950;
+  --danger: #f85149;
+  --info: #58a6ff;
+  --nav-h: 60px;
+  --header-h: 56px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; }
+a { color: var(--info); text-decoration: none; }
+
+/* ── Layout ── */
+#app { display: flex; flex-direction: column; height: 100%; }
+#top-bar {
+  height: var(--header-h); background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
+  position: sticky; top: 0; z-index: 100; flex-shrink: 0;
+}
+#top-bar h1 { font-size: 17px; font-weight: 700; color: var(--accent); letter-spacing: .5px; flex: 1; }
+#top-bar .back-btn { font-size: 22px; cursor: pointer; color: var(--muted); line-height: 1; }
+#top-bar .page-title { font-size: 16px; font-weight: 600; flex: 1; }
+#top-bar .action-btn {
+  background: var(--accent); color: #000; border: none; border-radius: 8px;
+  padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+#view { flex: 1; overflow-y: auto; padding: 16px 16px calc(var(--nav-h) + 12px); }
+#bottom-nav {
+  height: var(--nav-h); background: var(--surface); border-top: 1px solid var(--border);
+  display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; cursor: pointer; color: var(--muted); font-size: 10px; font-weight: 600;
+  letter-spacing: .3px; border: none; background: none; transition: color .15s;
+}
+.nav-item svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nav-item.active { color: var(--accent); }
+
+/* ── Cards ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+.card-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.card-header h3 { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--accent); flex: 1; }
+.card-body { padding: 16px; }
+
+/* ── Data Grid ── */
+.data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.data-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.data-item label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 4px; }
+.data-item .val { font-size: 16px; font-weight: 600; color: var(--text); }
+.data-item .val.big { font-size: 22px; font-weight: 700; color: var(--accent); }
+.data-item .val.mono { font-family: 'SF Mono', Menlo, monospace; font-size: 15px; }
+
+/* ── Lists ── */
+.list-item {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 10px; cursor: pointer; display: flex; align-items: center;
+  gap: 12px; transition: border-color .15s;
+}
+.list-item:active { border-color: var(--accent); }
+.list-item .info { flex: 1; min-width: 0; }
+.list-item .info h4 { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-item .info p { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.list-item .chevron { color: var(--muted); font-size: 18px; flex-shrink: 0; }
+.list-item .badge {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 8px; font-size: 11px; font-weight: 700; color: var(--muted); flex-shrink: 0;
+}
+.badge-val { background: var(--accent); color: #000; }
+.badge-ladder { background: #1c3a5e; color: var(--info); border-color: var(--info); }
+
+/* ── Forms ── */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 6px; }
+.form-control {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); padding: 11px 13px; font-size: 15px; outline: none; transition: border-color .15s;
+  -webkit-appearance: none; appearance: none;
+}
+.form-control:focus { border-color: var(--accent); }
+select.form-control { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 700;
+  cursor: pointer; border: none; width: 100%; transition: opacity .15s;
+}
+.btn:active { opacity: .8; }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-sm { padding: 7px 14px; font-size: 12px; width: auto; }
+.btn-group { display: flex; gap: 10px; }
+
+/* ── Tabs ── */
+.tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab-btn {
+  padding: 10px 16px; font-size: 13px; font-weight: 700; color: var(--muted); background: none;
+  border: none; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap;
+  transition: color .15s; letter-spacing: .3px; text-transform: uppercase;
+}
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── Shot table ── */
+.shot-table { width: 100%; border-collapse: collapse; }
+.shot-table th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+.shot-table td { padding: 8px 8px; font-size: 14px; border-bottom: 1px solid var(--border); font-family: 'SF Mono', Menlo, monospace; }
+.shot-table tr:last-child td { border-bottom: none; }
+.shot-table .fps-cell { font-weight: 600; }
+.delta-pos { color: var(--success); }
+.delta-neg { color: var(--danger); }
+
+/* ── Range card specific ── */
+.range-card { background: var(--surface); border: 2px solid var(--accent); border-radius: 12px; overflow: hidden; }
+.range-card .rc-head { background: var(--accent); color: #000; padding: 10px 14px; }
+.range-card .rc-head h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.range-card .rc-head p { font-size: 11px; font-weight: 600; opacity: .7; margin-top: 2px; }
+.rc-section { border-bottom: 1px solid var(--border); padding: 12px 14px; }
+.rc-section:last-child { border-bottom: none; }
+.rc-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+.rc-val { font-size: 20px; font-weight: 700; font-family: 'SF Mono', Menlo, monospace; color: var(--text); line-height: 1.2; margin-top: 2px; }
+.rc-val.accent { color: var(--accent); }
+.rc-val.sm { font-size: 14px; }
+.rc-row { display: flex; gap: 12px; }
+.rc-row > div { flex: 1; }
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.stat-box { background: var(--surface2); border-radius: 8px; padding: 10px 6px; }
+.stat-box .s-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+.stat-box .s-val { font-size: 18px; font-weight: 700; font-family: 'SF Mono', Menlo, monospace; color: var(--accent); margin-top: 4px; }
+.stat-box .s-unit { font-size: 10px; color: var(--muted); font-weight: 600; }
+
+/* ── Drop table ── */
+.drop-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.drop-table th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--border); }
+.drop-table th:first-child { text-align: left; }
+.drop-table td { padding: 8px 8px; border-bottom: 1px solid var(--border); text-align: right; font-family: 'SF Mono', Menlo, monospace; }
+.drop-table td:first-child { text-align: left; font-weight: 700; color: var(--accent); }
+.drop-table tr:last-child td { border-bottom: none; }
+.drop-table .zero-row td { background: rgba(214,163,34,0.08); }
+
+/* ── Misc ── */
+.section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 20px 0 10px; }
+.empty-state { text-align: center; padding: 48px 24px; color: var(--muted); }
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+.empty-state h3 { font-size: 16px; color: var(--text); margin-bottom: 8px; }
+.empty-state p { font-size: 14px; line-height: 1.5; }
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+.tag { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 700; color: var(--muted); margin: 2px; }
+.text-muted { color: var(--muted); }
+.text-accent { color: var(--accent); }
+.text-danger { color: var(--danger); }
+.text-success { color: var(--success); }
+
+/* ── Overlay / Modal ── */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; display: flex; align-items: flex-end; }
+.modal { background: var(--surface); border-radius: 20px 20px 0 0; width: 100%; max-height: 90vh; overflow-y: auto; padding: 20px 16px 32px; }
+.modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: 0 auto 20px; }
+.modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+
+/* ── Velocity live input ── */
+.velo-input-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.velo-input-row .shot-num { width: 28px; font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; flex-shrink: 0; }
+.velo-input-row input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 15px; font-family: 'SF Mono', Menlo, monospace; outline: none; text-align: center; }
+.velo-input-row input:focus { border-color: var(--accent); }
+.velo-input-row .del-btn { background: none; border: none; color: var(--danger); font-size: 18px; cursor: pointer; padding: 4px; }
+
+/* ── Charts ── */
+.chart-wrap { position: relative; height: 200px; margin: 8px 0; }
+
+/* ── Textarea ── */
+textarea.form-control { min-height: 80px; resize: vertical; }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: calc(var(--nav-h) + 16px); left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px;
+  font-size: 14px; font-weight: 600; z-index: 300; opacity: 0; transition: all .25s; pointer-events: none;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.success { border-color: var(--success); color: var(--success); }
+#toast.error { border-color: var(--danger); color: var(--danger); }
+
+/* ── Print ── */
+@media print {
+  #bottom-nav, #top-bar .action-btn, .tabs, .btn, .back-btn { display: none !important; }
+  #view { padding: 0; }
+  .range-card { page-break-inside: avoid; border: 2px solid #000; }
+}
+
+/* ── Load Bench Table ── */
+.load-bench-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.load-bench-table thead th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.load-bench-table tbody td { padding: 10px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.load-bench-table tbody tr:last-child td { border-bottom: none; }
+.lt-done { width: 36px; padding-left: 12px !important; }
+.lt-num { width: 36px; font-weight: 700; color: var(--muted); font-size: 13px; }
+.lt-charge { font-family: 'SF Mono', Menlo, monospace; font-weight: 700; font-size: 16px; color: var(--accent); min-width: 80px; }
+.lt-coal { font-family: 'SF Mono', Menlo, monospace; font-size: 14px; min-width: 64px; }
+.lt-jump { font-family: 'SF Mono', Menlo, monospace; font-size: 14px; min-width: 60px; }
+.lt-notes { min-width: 80px; }
+.lt-note-input { background: none; border: none; color: var(--muted); font-size: 12px; width: 100%; outline: none; padding: 0; }
+.lt-note-input:focus { color: var(--text); border-bottom: 1px solid var(--accent); }
+.lt-done-row td { opacity: .4; }
+.lt-done-row .lt-num, .lt-done-row .lt-charge { text-decoration: line-through; }
+/* Custom checkbox */
+.lt-checkbox { display: flex; align-items: center; cursor: pointer; }
+.lt-checkbox input { display: none; }
+.lt-checkmark { width: 22px; height: 22px; border: 2px solid var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
+.lt-checkbox input:checked + .lt-checkmark { background: var(--success); border-color: var(--success); }
+.lt-checkbox input:checked + .lt-checkmark::after { content: '✓'; color: #000; font-size: 13px; font-weight: 900; }
+
+/* ── Stepper ── */
+.stepper { display: flex; align-items: center; gap: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.stepper button { background: none; border: none; color: var(--text); font-size: 18px; font-weight: 700; padding: 6px 12px; cursor: pointer; line-height: 1; transition: background .15s; }
+.stepper button:active { background: var(--border); }
+.stepper .step-val { min-width: 44px; text-align: center; font-size: 14px; font-weight: 700; font-family: 'SF Mono', Menlo, monospace; }
+.fire-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 700; color: var(--danger); }
+.fire-badge .fire-num { font-size: 16px; font-family: 'SF Mono', Menlo, monospace; }
+.inv-row { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+.inv-row-top { display: flex; align-items: center; gap: 10px; }
+.inv-row-name { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; }
+.inv-row-meta { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.qty-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); margin-right: 4px; }
+
+/* ── Drag & Drop Target ── */
+.drop-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 32px 16px; text-align: center; cursor: pointer; transition: border-color .15s; }
+.drop-zone.over { border-color: var(--accent); background: rgba(210,153,34,.05); }
+.drop-zone p { font-size: 14px; color: var(--muted); margin-top: 8px; }
+
+/* ── Env inputs ── */
+.env-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+.env-strip label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); display: block; margin-bottom: 4px; }
+.env-strip input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 14px; outline: none; text-align: center; font-family: 'SF Mono', Menlo, monospace; }
+.env-strip input:focus { border-color: var(--accent); }
+
+/* ── Import progress ── */
+.import-log { background: var(--surface2); border-radius: 8px; padding: 12px; font-size: 12px; font-family: monospace; max-height: 200px; overflow-y: auto; color: var(--muted); }
+.import-log .ok { color: var(--success); }
+.import-log .err { color: var(--danger); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top-bar">
+    <span class="back-btn" id="back-btn" style="display:none">&#8592;</span>
+    <h1 id="app-title">&#9679; Reloading Master</h1>
+    <span id="top-action"></span>
+  </div>
+  <div id="view"></div>
+  <nav id="bottom-nav">
+    <button class="nav-item active" data-route="dashboard">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </button>
+    <button class="nav-item" data-route="firearms">
+      <svg viewBox="0 0 24 24"><path d="M2 12h4l2-3h8l2 3h4"/><path d="M4 12v4h2v-4"/><circle cx="18" cy="12" r="1"/></svg>
+      Firearms
+    </button>
+    <button class="nav-item" data-route="inventory">
+      <svg viewBox="0 0 24 24"><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3"/><path d="M21 8H3l3 13h12l3-13z"/><path d="M12 13v4"/></svg>
+      Inventory
+    </button>
+    <button class="nav-item" data-route="batches">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+      Batches
+    </button>
+    <button class="nav-item" data-route="import">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Import
+    </button>
+  </nav>
+</div>
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════
+//  DATABASE
+// ════════════════════════════════════════════════════
+const DB_NAME = 'ReloadingMaster', DB_VER = 1;
+let db;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('firearms'))
+        d.createObjectStore('firearms', { keyPath: 'id', autoIncrement: true });
+      if (!d.objectStoreNames.contains('components'))
+        d.createObjectStore('components', { keyPath: 'id', autoIncrement: true });
+      if (!d.objectStoreNames.contains('batches'))
+        d.createObjectStore('batches', { keyPath: 'id' });
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbTx(store, mode = 'readonly') {
+  return db.transaction(store, mode).objectStore(store);
+}
+
+function dbGetAll(store) {
+  return new Promise((res, rej) => {
+    const req = dbTx(store).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbGet(store, id) {
+  return new Promise((res, rej) => {
+    const req = dbTx(store).get(id);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbPut(store, obj) {
+  return new Promise((res, rej) => {
+    const req = dbTx(store, 'readwrite').put(obj);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbDelete(store, id) {
+  return new Promise((res, rej) => {
+    const req = dbTx(store, 'readwrite').delete(id);
+    req.onsuccess = () => res();
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function dbClear(store) {
+  return new Promise((res, rej) => {
+    const req = dbTx(store, 'readwrite').clear();
+    req.onsuccess = () => res();
+    req.onerror = () => rej(req.error);
+  });
+}
+
+// ════════════════════════════════════════════════════
+//  ROUTER
+// ════════════════════════════════════════════════════
+const routes = {};
+let currentRoute = '';
+
+function register(path, fn) { routes[path] = fn; }
+
+function navigate(path, opts = {}) {
+  currentRoute = path;
+  const handler = routes[path] || routes['404'];
+  if (handler) handler(opts);
+  updateNav(path);
+}
+
+function updateNav(path) {
+  const base = path.split('/')[0];
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.route === base);
+  });
+}
+
+document.getElementById('bottom-nav').addEventListener('click', e => {
+  const btn = e.target.closest('.nav-item');
+  if (btn) navigate(btn.dataset.route);
+});
+
+// ════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════
+function render(html) { document.getElementById('view').innerHTML = html; }
+function setTitle(title, showBack = false, action = '') {
+  document.getElementById('app-title').textContent = title;
+  document.getElementById('back-btn').style.display = showBack ? '' : 'none';
+  document.getElementById('top-action').innerHTML = action;
+}
+
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = ''; }, 2800);
+}
+
+function confirm_(msg) { return window.confirm(msg); }
+
+function fmt(n, dec = 1) {
+  if (n == null || isNaN(n)) return '—';
+  return Number(n).toFixed(dec);
+}
+
+function calcStats(velos) {
+  const v = velos.filter(x => x > 0 && !isNaN(x));
+  if (!v.length) return { avg: 0, sd: 0, es: 0, n: 0 };
+  const avg = v.reduce((a, b) => a + b, 0) / v.length;
+  const sd = Math.sqrt(v.reduce((s, x) => s + (x - avg) ** 2, 0) / v.length);
+  const es = Math.max(...v) - Math.min(...v);
+  return { avg, sd, es, n: v.length };
+}
+
+function makeId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function fmtDate(d) {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+  catch { return d; }
+}
+
+// ════════════════════════════════════════════════════
+//  BALLISTICS ENGINE  (G1, point-mass, Euler)
+// ════════════════════════════════════════════════════
+// G1 drag table [Mach, Cd]
+const G1 = [
+  [0.00,0.2629],[0.05,0.2558],[0.10,0.2487],[0.15,0.2413],[0.20,0.2336],
+  [0.25,0.2254],[0.30,0.2167],[0.35,0.2076],[0.40,0.1980],[0.45,0.1882],
+  [0.50,0.1782],[0.55,0.1680],[0.60,0.1579],[0.65,0.1477],[0.70,0.1373],
+  [0.75,0.1267],[0.80,0.1160],[0.85,0.1053],[0.90,0.1011],[0.95,0.0979],
+  [1.00,0.1162],[1.05,0.1452],[1.10,0.1481],[1.15,0.1495],[1.20,0.1504],
+  [1.25,0.1514],[1.30,0.1522],[1.35,0.1530],[1.40,0.1537],[1.45,0.1545],
+  [1.50,0.1551],[1.55,0.1558],[1.60,0.1565],[1.65,0.1572],[1.70,0.1579],
+  [1.75,0.1586],[1.80,0.1594],[1.85,0.1600],[1.90,0.1607],[1.95,0.1614],
+  [2.00,0.1621],[2.05,0.1628],[2.10,0.1636],[2.15,0.1640],[2.20,0.1647],
+  [2.25,0.1653],[2.30,0.1660],[2.35,0.1666],[2.40,0.1673],[2.50,0.1686],
+  [2.60,0.1700],[2.70,0.1713],[2.80,0.1726],[2.90,0.1739],[3.00,0.1752],
+  [3.20,0.1780],[3.40,0.1810],[3.60,0.1840],[3.80,0.1870],[4.00,0.1900],
+  [4.50,0.1965],[5.00,0.2049]
+];
+
+function g1Cd(mach) {
+  if (mach <= G1[0][0]) return G1[0][1];
+  if (mach >= G1[G1.length-1][0]) return G1[G1.length-1][1];
+  for (let i = 1; i < G1.length; i++) {
+    if (mach <= G1[i][0]) {
+      const t = (mach - G1[i-1][0]) / (G1[i][0] - G1[i-1][0]);
+      return G1[i-1][1] + t * (G1[i][1] - G1[i-1][1]);
+    }
+  }
+  return 0.2;
+}
+
+function computeDropTable(mv, bcG1, bulletWeightGr, tempF, altFt, humidityPct, zeroYds = 100, maxYds = 1000) {
+  if (!mv || !bcG1 || !bulletWeightGr || mv <= 0 || bcG1 <= 0) return null;
+
+  // Temperature in Rankine
+  const Tr = tempF + 459.67;
+  // Speed of sound (ft/s) at temperature
+  const Cs = 49.0223 * Math.sqrt(Tr);
+  // Altitude pressure (inHg) via barometric formula
+  const P = 29.921 * Math.pow(1 - 6.87535e-6 * altFt, 5.2561);
+  // Standard conditions: 59°F (518.67R), 29.92 inHg
+  // Density ratio: ρ/ρ₀ = (P/P₀) × (T₀/T)  [simplified, ignoring humidity second-order effect]
+  const rhoRatio = (P / 29.921) * (518.67 / Tr) * (1 - 0.00378 * (humidityPct / 100) * satVaporPressure(tempF) / P);
+
+  // Bullet mass in slugs (1 grain = 1/7000 lb, 1 slug = 1 lb·s²/ft)
+  const mass = bulletWeightGr / 7000 / 32.174;
+  // Bullet cross-section area (G1 ref: .30 cal = 0.07069 in² → 0.0004909 ft²)
+  // For any bullet: A = π(d/2)² in ft². Use caliber from BC scaling.
+  // Standard G1 area reference: 1 in² for BC calc purposes.
+  // Actual deceleration formula: a = rhoRatio × ρ₀ × v² × Cd × A / (2m)
+  // But BC = (m/A) / i, so m/A = BC × i = BC (since form factor cancels in standard G1)
+  // Standard sea-level air density: 0.0765 lb/ft³ = 0.002378 slug/ft³
+  const rho0 = 0.002378; // slug/ft³
+  const rho = rho0 * rhoRatio;
+
+  // bullet diameter ref area: we don't know it explicitly. BC = (W/7000) / (i × d²) in lb/in² units
+  // For the trajectory ODE, use: deceleration = (rho × Cd(M) × A) / (2 × m)
+  // where Cd is the G1 standard Cd, and BC absorbs m/A ratio.
+  // Standard form: dv/dt = -v² × rho × Cd(M) / (2 × BC_slug_per_in2 × 144)
+  // BC in lb/in² units, convert: BC_slug = BC_lb / 32.174 / 144? No...
+  // Use the correct formulation:
+  // F_drag = ½ × ρ × v² × Cd × A_ref
+  // where for G1 reference, A_ref is the sectional area of the standard G1 projectile
+  // BC = (m/A) / form_factor
+  // deceleration = F_drag / m = ρ × v² × Cd / (2 × BC)
+  // with BC in consistent units (slug/ft²), ρ in slug/ft³, v in ft/s
+  // Convert BC from lb/in² to slug/ft²: BC_slugft2 = BC_lbin2 / 32.174 × 144 = BC × 4.477
+
+  const BC_slug = bcG1 * 4.477; // slug/ft²
+
+  // Integration setup
+  const dt = 0.0005; // time step seconds
+  const g = 32.174; // ft/s²
+  let vx = mv, vy = 0;
+  let x = 0, y = 0;
+  let t = 0;
+  const results = [];
+  let zeroY = null;
+  let zeroHit = false;
+
+  // We'll collect data at each 100-yd increment
+  const checkYds = [];
+  for (let r = 100; r <= maxYds; r += 100) checkYds.push(r);
+  let nextCheck = 0;
+
+  while (x < maxYds * 3 && t < 5.0 && nextCheck < checkYds.length) {
+    const v = Math.sqrt(vx * vx + vy * vy);
+    const mach = v / Cs;
+    const Cd = g1Cd(mach);
+    const drag = rho * Cd * v * v / (2 * BC_slug);
+    const ax = -drag * (vx / v);
+    const ay = -drag * (vy / v) - g;
+
+    vx += ax * dt;
+    vy += ay * dt;
+    x += vx * dt;
+    y += vy * dt;
+    t += dt;
+
+    const xYds = x / 3;
+
+    // Find zero crossing
+    if (!zeroHit && xYds >= zeroYds) {
+      zeroY = y;
+      zeroHit = true;
+    }
+
+    if (nextCheck < checkYds.length && xYds >= checkYds[nextCheck]) {
+      results.push({
+        range: checkYds[nextCheck],
+        velocity: Math.round(v),
+        drop_in: (y - (zeroHit ? 0 : 0)) * 12,
+        tof: t,
+        energy: Math.round(0.5 * (bulletWeightGr / 7000 / 32.174) * v * v * 0.0311),
+      });
+      nextCheck++;
+    }
+  }
+
+  // Now recompute drops relative to zero
+  if (zeroY !== null) {
+    // Re-run to get proper zero-referenced drops, this time collecting zeroY at zeroYds range
+    // Drop relative to zero = raw_drop - zeroY
+    // Re-integrate with zero-line correction
+    // For simplicity: shift results so zero range = 0 drop
+    let zeroIdx = results.findIndex(r => r.range >= zeroYds);
+    if (zeroIdx >= 0) {
+      const zeroDropIn = results[zeroIdx].drop_in;
+      results.forEach(r => {
+        r.drop_from_zero = r.drop_in - zeroDropIn;
+        r.moa = r.range > 0 ? (r.drop_from_zero / r.range * 100 / 1.047) : 0;
+      });
+    }
+  }
+
+  return results;
+}
+
+function satVaporPressure(tempF) {
+  // Magnus formula, returns inHg
+  const tc = (tempF - 32) * 5 / 9;
+  return Math.exp(17.625 * tc / (243.04 + tc)) * 0.2953;
+}
+
+// ════════════════════════════════════════════════════
+//  CSV PARSER  (Garmin Xero Pro C1)
+// ════════════════════════════════════════════════════
+function parseGarminCSV(text) {
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l);
+  const shots = [];
+  for (const line of lines) {
+    const cols = line.split(',').map(s => s.trim().replace(/"/g, ''));
+    // Shot row: first col is a number (shot #)
+    const shotNum = parseInt(cols[0]);
+    if (!isNaN(shotNum) && shotNum > 0) {
+      const fps = parseFloat(cols[1]);
+      if (!isNaN(fps) && fps > 0) {
+        shots.push({ num: shotNum, velocity: fps });
+      }
+    }
+  }
+  return shots;
+}
+
+// ════════════════════════════════════════════════════
+//  BATCH ID GENERATOR
+// ════════════════════════════════════════════════════
+function genBatchId(firearmId, bullet, loadType, charge) {
+  const b = bullet.replace(/\s+/g, '').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 10);
+  const f = (firearmId || 'UNKN').replace(/\s+/g, '');
+  let typeCode = 'VAL';
+  if (loadType === 'Charge Ladder') typeCode = 'CHG';
+  else if (loadType === 'Seating Ladder') typeCode = 'SEAT';
+  else if (loadType === 'Jump Ladder') typeCode = 'JUMP';
+  const c = charge ? `-${charge}` : '';
+  return `${f}-${b}-${typeCode}${c}`;
+}
+
+// ════════════════════════════════════════════════════
+//  VIEWS
+// ════════════════════════════════════════════════════
+
+// ── DASHBOARD ──
+register('dashboard', async () => {
+  setTitle('⬤ Reloading Master', false, `<button class="action-btn" onclick="exportData()">⬇ Export</button>`);
+  const [batches, firearms] = await Promise.all([dbGetAll('batches'), dbGetAll('firearms')]);
+  const recentBatches = [...batches].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
+  const totalShots = batches.reduce((s, b) => s + (b.shots?.length || 0), 0);
+
+  render(`
+    <div class="data-grid three" style="margin-bottom:16px">
+      <div class="data-item">
+        <label>Firearms</label>
+        <div class="val big">${firearms.length}</div>
+      </div>
+      <div class="data-item">
+        <label>Batches</label>
+        <div class="val big">${batches.length}</div>
+      </div>
+      <div class="data-item">
+        <label>Shots Fired</label>
+        <div class="val big">${totalShots}</div>
+      </div>
+    </div>
+
+    ${recentBatches.length ? `
+    <div class="section-title">Recent Batches</div>
+    ${recentBatches.map(b => {
+      const stats = b.shots?.length ? calcStats(b.shots.map(s => s.velocity)) : null;
+      return `
+      <div class="list-item" onclick="navigate('batch/${b.id}')">
+        <div class="info">
+          <h4>${b.id}</h4>
+          <p>${b.bullet || '—'} &middot; ${b.powder || '—'} &middot; ${fmtDate(b.range_date || b.created_at)}</p>
+        </div>
+        ${stats && stats.n > 0 ? `<div class="badge badge-val">${Math.round(stats.avg)} fps</div>` : ''}
+        <span class="chevron">›</span>
+      </div>`;
+    }).join('')}
+    ` : `
+    <div class="empty-state">
+      <div class="icon">🎯</div>
+      <h3>No batches yet</h3>
+      <p>Head to Batches to create your first load development batch.</p>
+    </div>`}
+
+    ${batches.length === 0 ? `
+    <div style="margin-top:20px">
+      <button class="btn btn-secondary" onclick="navigate('import')">
+        ↑ Import from spreadsheet
+      </button>
+    </div>` : ''}
+  `);
+});
+
+// ── FIREARMS ──
+register('firearms', async () => {
+  setTitle('Firearms', false, `<button class="action-btn" onclick="navigate('firearms/new')">+ Add</button>`);
+  const firearms = await dbGetAll('firearms');
+
+  render(`
+    ${firearms.length === 0 ? `
+    <div class="empty-state">
+      <div class="icon">🔫</div>
+      <h3>No firearms yet</h3>
+      <p>Add your rifles to link them to load batches.</p>
+      <br><button class="btn btn-primary" style="max-width:200px;margin:0 auto" onclick="navigate('firearms/new')">+ Add Firearm</button>
+    </div>` : firearms.map(f => `
+    <div class="list-item">
+      <div class="info">
+        <h4>${f.make_model || f.name}</h4>
+        <p>${f.chamber || f.caliber || '—'} &middot; ${f.barrel_length ? f.barrel_length + '″ barrel' : '—'}</p>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="navigate('firearms/edit/${f.id}')">Edit</button>
+    </div>`).join('')}
+  `);
+});
+
+register('firearms/new', () => renderFirearmForm(null));
+register('firearms/edit', ({ id }) => renderFirearmForm(id));
+
+async function renderFirearmForm(id) {
+  const fa = id ? await dbGet('firearms', Number(id)) : null;
+  setTitle(fa ? 'Edit Firearm' : 'Add Firearm', true);
+  document.getElementById('back-btn').onclick = () => navigate('firearms');
+
+  render(`
+    <div class="form-group">
+      <label>Firearm ID *</label>
+      <input class="form-control" id="fa-id" value="${fa?.name || ''}" placeholder="e.g. Sav16.308">
+    </div>
+    <div class="form-group">
+      <label>Make / Model *</label>
+      <input class="form-control" id="fa-mm" value="${fa?.make_model || ''}" placeholder="e.g. Savage 116">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Chamber</label>
+        <input class="form-control" id="fa-ch" value="${fa?.chamber || ''}" placeholder="308 WINCHESTER">
+      </div>
+      <div class="form-group">
+        <label>Caliber</label>
+        <input class="form-control" id="fa-cal" value="${fa?.caliber || ''}" placeholder=".308">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Barrel Length (in)</label>
+        <input class="form-control" id="fa-bl" type="number" inputmode="decimal" step="0.5" value="${fa?.barrel_length || ''}">
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input class="form-control" id="fa-notes" value="${fa?.notes || ''}">
+      </div>
+    </div>
+    <div class="btn-group" style="margin-top:8px">
+      <button class="btn btn-primary" onclick="saveFirearm(${id || 'null'})">Save</button>
+      ${fa ? `<button class="btn btn-danger" onclick="deleteFirearm(${id})">Delete</button>` : ''}
+    </div>
+  `);
+}
+
+window.saveFirearm = async (id) => {
+  const obj = {
+    name: document.getElementById('fa-id').value.trim(),
+    make_model: document.getElementById('fa-mm').value.trim(),
+    chamber: document.getElementById('fa-ch').value.trim(),
+    caliber: document.getElementById('fa-cal').value.trim(),
+    barrel_length: parseFloat(document.getElementById('fa-bl').value) || null,
+    notes: document.getElementById('fa-notes').value.trim(),
+  };
+  if (!obj.name || !obj.make_model) { toast('Firearm ID and Make/Model required', 'error'); return; }
+  if (id) obj.id = Number(id);
+  await dbPut('firearms', obj);
+  toast('Firearm saved', 'success');
+  navigate('firearms');
+};
+
+window.deleteFirearm = async (id) => {
+  if (!confirm_('Delete this firearm?')) return;
+  await dbDelete('firearms', Number(id));
+  toast('Deleted');
+  navigate('firearms');
+};
+
+// ── INVENTORY ──
+register('inventory', async () => {
+  setTitle('Inventory', false, `<button class="action-btn" onclick="showAddComponent()">+ Add</button>`);
+  const comps = await dbGetAll('components');
+  const types = ['bullet', 'powder', 'primer', 'case'];
+  const typeLabels = { bullet: 'Bullets', powder: 'Powders', primer: 'Primers', case: 'Cases' };
+
+  const grouped = {};
+  types.forEach(t => { grouped[t] = comps.filter(c => c.type === t); });
+
+  render(`
+    ${types.map(t => `
+    <div class="section-title">${typeLabels[t]}</div>
+    ${grouped[t].length === 0 ? `<p class="text-muted" style="font-size:13px;margin-bottom:12px">None added yet.</p>` :
+      grouped[t].map(c => `
+      <div class="inv-row">
+        <div class="inv-row-top">
+          <div class="inv-row-name">${c.name}</div>
+          <button class="btn btn-secondary btn-sm" onclick="editComponent(${c.id})">Edit</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--danger)" onclick="deleteComponent(${c.id})">✕</button>
+        </div>
+        <div class="inv-row-meta">
+          <span class="qty-label">QTY</span>
+          <div class="stepper">
+            <button onclick="adjustQty(${c.id}, -1)">−</button>
+            <span class="step-val" id="qty-${c.id}">${c.quantity ?? 0}</span>
+            <button onclick="adjustQty(${c.id}, 1)">+</button>
+          </div>
+          ${t === 'case' ? `
+          <span class="qty-label" style="margin-left:8px">FIRE COUNT</span>
+          <div class="stepper">
+            <button onclick="adjustFireCount(${c.id}, -1)">−</button>
+            <span class="step-val fire-count-val" id="fc-${c.id}" style="color:${(c.fire_count||0) >= 5 ? 'var(--danger)' : (c.fire_count||0) >= 3 ? 'var(--accent)' : 'var(--text)'}">${c.fire_count ?? 0}</span>
+            <button onclick="adjustFireCount(${c.id}, 1)">+</button>
+          </div>
+          ${(c.fire_count||0) >= 5 ? `<span class="fire-badge">⚠ Anneal / Inspect</span>` :
+            (c.fire_count||0) >= 3 ? `<span class="fire-badge" style="color:var(--accent);border-color:rgba(210,153,34,.4);background:rgba(210,153,34,.1)">Check necks</span>` : ''}
+          ` : ''}
+          ${c.notes ? `<span class="text-muted" style="font-size:12px">${c.notes}</span>` : ''}
+        </div>
+        ${t === 'bullet' && (c.bullet_weight_gr || c.bc_g1 || c.bc_g7 || c.bullet_length || c.bullet_sd || c.factory_coal) ? `
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          ${c.bullet_weight_gr? `<div><div class="rc-label">Weight</div><div style="font-size:13px;font-family:monospace;margin-top:2px">${c.bullet_weight_gr} gr</div></div>` : '<div></div>'}
+          ${c.bullet_length   ? `<div><div class="rc-label">Length</div><div style="font-size:13px;font-family:monospace;margin-top:2px">${c.bullet_length}"</div></div>` : '<div></div>'}
+          ${c.bullet_sd       ? `<div><div class="rc-label">SD</div><div style="font-size:13px;font-family:monospace;margin-top:2px">${c.bullet_sd}</div></div>` : '<div></div>'}
+          ${c.bc_g1           ? `<div><div class="rc-label">BC G1</div><div style="font-size:13px;font-family:monospace;margin-top:2px;color:var(--accent)">${c.bc_g1}</div></div>` : '<div></div>'}
+          ${c.bc_g7           ? `<div><div class="rc-label">BC G7</div><div style="font-size:13px;font-family:monospace;margin-top:2px;color:var(--accent)">${c.bc_g7}</div></div>` : '<div></div>'}
+          ${c.factory_coal    ? `<div><div class="rc-label">COAL Max</div><div style="font-size:13px;font-family:monospace;margin-top:2px">${c.factory_coal}"</div></div>` : '<div></div>'}
+        </div>` : ''}
+        ${t === 'case' && c.trim_length ? `
+        <div style="display:flex;gap:16px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div><div class="rc-label">Trim Length</div><div style="font-size:13px;font-family:monospace;margin-top:2px">${c.trim_length}"</div></div>
+        </div>` : ''}
+      </div>`).join('')}
+    `).join('')}
+  `);
+});
+
+window.showAddComponent = () => {
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="overlay" id="comp-overlay" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <h3>Add Component</h3>
+        <div class="form-group">
+          <label>Type</label>
+          <select class="form-control" id="comp-type" onchange="toggleCompFields(this.value)">
+            <option value="bullet">Bullet</option>
+            <option value="powder">Powder</option>
+            <option value="primer">Primer</option>
+            <option value="case">Case</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Name</label>
+          <input class="form-control" id="comp-name" placeholder="e.g. HDY 178 ELDX">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Quantity</label>
+            <input class="form-control" id="comp-qty" type="number" inputmode="numeric" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <input class="form-control" id="comp-notes" placeholder="Optional">
+          </div>
+        </div>
+        <div id="bullet-fields">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Bullet Data</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Weight (gr)</label>
+              <input class="form-control" id="comp-weight" type="number" inputmode="decimal" step="0.1" placeholder="178">
+            </div>
+            <div class="form-group">
+              <label>Length (in)</label>
+              <input class="form-control" id="comp-length" type="number" inputmode="decimal" step="0.001" placeholder="1.260">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>SD</label>
+              <input class="form-control" id="comp-sd" type="number" inputmode="decimal" step="0.001" placeholder="0.268">
+            </div>
+            <div class="form-group">
+              <label>Factory Max COAL (in)</label>
+              <input class="form-control" id="comp-factory-coal" type="number" inputmode="decimal" step="0.001" placeholder="2.810">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>BC G1</label>
+              <input class="form-control" id="comp-bc-g1" type="number" inputmode="decimal" step="0.001" placeholder="0.530">
+            </div>
+            <div class="form-group">
+              <label>BC G7</label>
+              <input class="form-control" id="comp-bc-g7" type="number" inputmode="decimal" step="0.001" placeholder="0.274">
+            </div>
+          </div>
+        </div>
+        <div id="case-fields" style="display:none">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Case Data</div>
+          <div class="form-group">
+            <label>Trim Length (in)</label>
+            <input class="form-control" id="comp-trim" type="number" inputmode="decimal" step="0.001" placeholder="2.005">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="saveComponent()">Add</button>
+      </div>
+    </div>`);
+};
+
+window.toggleCompFields = (type) => {
+  document.getElementById('bullet-fields').style.display = type === 'bullet' ? '' : 'none';
+  document.getElementById('case-fields').style.display   = type === 'case'   ? '' : 'none';
+};
+
+window.saveComponent = async () => {
+  const type = document.getElementById('comp-type').value;
+  const name = document.getElementById('comp-name').value.trim();
+  if (!name) { toast('Name required', 'error'); return; }
+  const obj = {
+    type, name,
+    quantity:   parseInt(document.getElementById('comp-qty').value) || 0,
+    notes:      document.getElementById('comp-notes').value.trim(),
+    fire_count: 0,
+  };
+  if (type === 'bullet') {
+    obj.bullet_weight_gr = parseFloat(document.getElementById('comp-weight').value)      || null;
+    obj.bullet_length    = parseFloat(document.getElementById('comp-length').value)      || null;
+    obj.bullet_sd        = parseFloat(document.getElementById('comp-sd').value)          || null;
+    obj.bc_g1            = parseFloat(document.getElementById('comp-bc-g1').value)       || null;
+    obj.bc_g7            = parseFloat(document.getElementById('comp-bc-g7').value)       || null;
+    obj.factory_coal     = parseFloat(document.getElementById('comp-factory-coal').value)|| null;
+  }
+  if (type === 'case') {
+    obj.trim_length = parseFloat(document.getElementById('comp-trim').value) || null;
+  }
+  await dbPut('components', obj);
+  document.getElementById('comp-overlay').remove();
+  toast('Added', 'success');
+  navigate('inventory');
+};
+
+window.editComponent = async (id) => {
+  const c = await dbGet('components', id);
+  if (!c) return;
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="overlay" id="edit-comp-overlay" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <h3>Edit ${c.name}</h3>
+        <div class="form-group">
+          <label>Name</label>
+          <input class="form-control" id="ec-name" value="${c.name}">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Quantity</label>
+            <input class="form-control" id="ec-qty" type="number" inputmode="numeric" min="0" value="${c.quantity ?? 0}">
+          </div>
+          ${c.type === 'case' ? `
+          <div class="form-group">
+            <label>Fire Count</label>
+            <input class="form-control" id="ec-fc" type="number" inputmode="numeric" min="0" value="${c.fire_count ?? 0}">
+          </div>` : '<div></div>'}
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input class="form-control" id="ec-notes" value="${c.notes || ''}">
+        </div>
+        ${c.type === 'bullet' ? `
+        <div class="divider"></div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px">Bullet Data</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Weight (gr)</label>
+            <input class="form-control" id="ec-weight" type="number" inputmode="decimal" step="0.1" value="${c.bullet_weight_gr ?? ''}" placeholder="178">
+          </div>
+          <div class="form-group">
+            <label>Length (in)</label>
+            <input class="form-control" id="ec-length" type="number" inputmode="decimal" step="0.001" value="${c.bullet_length ?? ''}" placeholder="1.260">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>SD</label>
+            <input class="form-control" id="ec-sd" type="number" inputmode="decimal" step="0.001" value="${c.bullet_sd ?? ''}" placeholder="0.268">
+          </div>
+          <div class="form-group">
+            <label>Factory Max COAL (in)</label>
+            <input class="form-control" id="ec-factory-coal" type="number" inputmode="decimal" step="0.001" value="${c.factory_coal ?? ''}" placeholder="2.810">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>BC G1</label>
+            <input class="form-control" id="ec-bc-g1" type="number" inputmode="decimal" step="0.001" value="${c.bc_g1 ?? ''}" placeholder="0.530">
+          </div>
+          <div class="form-group">
+            <label>BC G7</label>
+            <input class="form-control" id="ec-bc-g7" type="number" inputmode="decimal" step="0.001" value="${c.bc_g7 ?? ''}" placeholder="0.274">
+          </div>
+        </div>` : ''}
+        ${c.type === 'case' ? `
+        <div class="divider"></div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px">Case Data</div>
+        <div class="form-group">
+          <label>Trim Length (in)</label>
+          <input class="form-control" id="ec-trim" type="number" inputmode="decimal" step="0.001" value="${c.trim_length ?? ''}" placeholder="2.005">
+        </div>` : ''}
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="saveEditComponent(${id})">Save</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('edit-comp-overlay').remove()">Cancel</button>
+        </div>
+      </div>
+    </div>`);
+};
+
+window.saveEditComponent = async (id) => {
+  const c = await dbGet('components', id);
+  c.name     = document.getElementById('ec-name').value.trim() || c.name;
+  c.quantity = parseInt(document.getElementById('ec-qty').value) || 0;
+  c.notes    = document.getElementById('ec-notes').value.trim();
+  if (c.type === 'case') {
+    c.fire_count  = parseInt(document.getElementById('ec-fc').value) || 0;
+    c.trim_length = parseFloat(document.getElementById('ec-trim').value) || null;
+  }
+  if (c.type === 'bullet') {
+    c.bullet_weight_gr = parseFloat(document.getElementById('ec-weight').value)        || null;
+    c.bullet_length    = parseFloat(document.getElementById('ec-length').value)        || null;
+    c.bullet_sd        = parseFloat(document.getElementById('ec-sd').value)            || null;
+    c.bc_g1            = parseFloat(document.getElementById('ec-bc-g1').value)         || null;
+    c.bc_g7            = parseFloat(document.getElementById('ec-bc-g7').value)         || null;
+    c.factory_coal     = parseFloat(document.getElementById('ec-factory-coal').value)  || null;
+  }
+  await dbPut('components', c);
+  document.getElementById('edit-comp-overlay').remove();
+  toast('Saved', 'success');
+  navigate('inventory');
+};
+
+window.adjustQty = async (id, delta) => {
+  const c = await dbGet('components', id);
+  c.quantity = Math.max(0, (c.quantity ?? 0) + delta);
+  await dbPut('components', c);
+  const el = document.getElementById(`qty-${id}`);
+  if (el) el.textContent = c.quantity;
+};
+
+window.adjustFireCount = async (id, delta) => {
+  const c = await dbGet('components', id);
+  c.fire_count = Math.max(0, (c.fire_count ?? 0) + delta);
+  await dbPut('components', c);
+  // Re-render inventory to pick up warning badges
+  navigate('inventory');
+};
+
+window.deleteComponent = async (id) => {
+  if (!confirm_('Remove this component?')) return;
+  await dbDelete('components', id);
+  toast('Removed');
+  navigate('inventory');
+};
+
+// ── BATCH LIST ──
+register('batches', async () => {
+  setTitle('Batches', false, `<button class="action-btn" onclick="navigate('batches/new')">+ New</button>`);
+  const batches = await dbGetAll('batches');
+  const sorted = [...batches].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  render(sorted.length === 0 ? `
+    <div class="empty-state">
+      <div class="icon">📋</div>
+      <h3>No batches yet</h3>
+      <p>Create a new batch to start tracking a load development session.</p>
+      <br><button class="btn btn-primary" style="max-width:200px;margin:0 auto" onclick="navigate('batches/new')">+ New Batch</button>
+    </div>` :
+    sorted.map(b => {
+      const stats = b.shots?.length ? calcStats(b.shots.map(s => s.velocity)) : null;
+      const typeClass = b.load_dev_type === 'Charge Ladder' ? 'badge-ladder' : 'badge-val';
+      const typeShort = b.load_dev_type === 'Charge Ladder' ? 'LADDER' : 'VALID';
+      return `
+      <div class="list-item" onclick="navigate('batch/${b.id}')">
+        <div class="info">
+          <h4>${b.id}</h4>
+          <p>${b.bullet || '—'} &middot; ${b.powder || '—'}</p>
+        </div>
+        <div class="badge ${typeClass}" style="font-size:10px">${typeShort}</div>
+        ${stats && stats.n > 0 ? `<div class="badge badge-val">${Math.round(stats.avg)}</div>` : ''}
+        <span class="chevron">›</span>
+      </div>`;
+    }).join('')
+  );
+});
+
+// ── NEW BATCH ──
+// ── BATCH EDIT ──
+routes['batches/edit'] = async ({ id }) => {
+  if (!id) { navigate('batches'); return; }
+  const batch = await dbGet('batches', id);
+  if (!batch) { toast('Batch not found', 'error'); navigate('batches'); return; }
+  setTitle('Edit Batch', true);
+  document.getElementById('back-btn').onclick = () => navigate('batch/' + id);
+  await renderBatchForm(batch);
+};
+
+async function renderBatchForm(batch) {
+  const [firearms, comps] = await Promise.all([dbGetAll('firearms'), dbGetAll('components')]);
+  const bullets = comps.filter(c => c.type === 'bullet');
+  const powders = comps.filter(c => c.type === 'powder');
+  const primers = comps.filter(c => c.type === 'primer');
+  const cases   = comps.filter(c => c.type === 'case');
+
+  const selOpt = (arr, val) => arr.map(x => `<option ${x.name === val ? 'selected' : ''}>${x.name}</option>`).join('');
+  const fopt = firearms.map(f => `<option value="${f.name}" ${f.name === batch.firearm_id ? 'selected' : ''}>${f.name} — ${f.make_model}</option>`).join('');
+  const typeOpts = ['Validation Batch','Charge Ladder','Seating Ladder','Jump Ladder']
+    .map(t => `<option ${t === batch.load_dev_type ? 'selected' : ''}>${t}</option>`).join('');
+  const isLadder = batch.load_dev_type === 'Charge Ladder';
+
+  render(`
+    <div class="section-title">Firearm & Components</div>
+    <div class="form-group">
+      <label>Firearm *</label>
+      <select class="form-control" id="b-firearm"><option value="">— Select —</option>${fopt}</select>
+    </div>
+    <div class="form-group">
+      <label>Bullet *</label>
+      <select class="form-control" id="b-bullet" onchange="autofillBulletData()"><option value="">— Select —</option>${selOpt(bullets, batch.bullet)}</select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Powder *</label>
+        <select class="form-control" id="b-powder"><option value="">— Select —</option>${selOpt(powders, batch.powder)}</select>
+      </div>
+      <div class="form-group">
+        <label>Primer</label>
+        <select class="form-control" id="b-primer"><option value="">— Select —</option>${selOpt(primers, batch.primer)}</select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Case</label>
+      <select class="form-control" id="b-case"><option value="">— Select —</option>${selOpt(cases, batch.case_brand)}</select>
+    </div>
+
+    <div class="section-title">Load Development</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Type *</label>
+        <select class="form-control" id="b-type" onchange="toggleChargeFields()">
+          ${typeOpts}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Cartridge Count</label>
+        <input class="form-control" id="b-count" type="number" inputmode="numeric" min="1" max="50" value="${batch.cartridge_count || 10}">
+      </div>
+    </div>
+
+    <div id="charge-fixed-group" class="form-group" ${isLadder ? 'style="display:none"' : ''}>
+      <label>Charge Weight (gr)</label>
+      <input class="form-control" id="b-charge-fixed" type="number" inputmode="decimal" step="0.1" value="${batch.charge_fixed ?? ''}">
+    </div>
+    <div id="charge-range-group" ${!isLadder ? 'style="display:none"' : ''}>
+      <div class="form-row three">
+        <div class="form-group">
+          <label>Min (gr)</label>
+          <input class="form-control" id="b-charge-min" type="number" inputmode="decimal" step="0.1" value="${batch.charge_min ?? ''}">
+        </div>
+        <div class="form-group">
+          <label>Max (gr)</label>
+          <input class="form-control" id="b-charge-max" type="number" inputmode="decimal" step="0.1" value="${batch.charge_max ?? ''}">
+        </div>
+        <div class="form-group">
+          <label>Steps</label>
+          <input class="form-control" id="b-charge-steps" type="number" inputmode="numeric" min="1" value="1">
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">Seating / Jump</div>
+    <div class="form-row three">
+      <div class="form-group">
+        <label>COAL (in)</label>
+        <input class="form-control" id="b-coal" type="number" inputmode="decimal" step="0.001" value="${batch.coal ?? ''}">
+      </div>
+      <div class="form-group">
+        <label>Coal-to-Lands</label>
+        <input class="form-control" id="b-ctl" type="number" inputmode="decimal" step="0.001" value="${batch.coal_to_lands ?? ''}">
+      </div>
+      <div class="form-group">
+        <label>Jump (in)</label>
+        <input class="form-control" id="b-jump" type="number" inputmode="decimal" step="0.001" value="${batch.jump ?? ''}">
+      </div>
+    </div>
+
+    <div class="section-title">Bullet Data (for Ballistics)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Bullet Weight (gr)</label>
+        <input class="form-control" id="b-wt" type="number" inputmode="decimal" step="0.1" value="${batch.bullet_weight_gr ?? ''}">
+      </div>
+      <div class="form-group">
+        <label>BC G1</label>
+        <input class="form-control" id="b-bc" type="number" inputmode="decimal" step="0.001" value="${batch.bc_g1 ?? ''}">
+      </div>
+    </div>
+
+    <div class="section-title">Reference Data (RDS)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>RDS Source</label>
+        <input class="form-control" id="b-rds" value="${batch.rds_source || ''}">
+      </div>
+      <div class="form-group">
+        <label>RDS Barrel (in)</label>
+        <input class="form-control" id="b-rds-bl" type="number" inputmode="decimal" step="0.5" value="${batch.rds_barrel_length ?? ''}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>RDS Velo Min</label>
+        <input class="form-control" id="b-rds-vmin" type="number" value="${batch.rds_velo_min ?? ''}">
+      </div>
+      <div class="form-group">
+        <label>RDS Velo Max</label>
+        <input class="form-control" id="b-rds-vmax" type="number" value="${batch.rds_velo_max ?? ''}">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:8px">
+      <label>Loaded Date</label>
+      <input class="form-control" id="b-ldate" type="date" value="${batch.loaded_date || ''}">
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea class="form-control" id="b-notes">${batch.notes || ''}</textarea>
+    </div>
+
+    <div class="btn-group" style="margin-top:8px">
+      <button class="btn btn-primary" onclick="updateBatch('${batch.id}')">Save Changes</button>
+      <button class="btn btn-secondary" onclick="navigate('batch/${batch.id}')">Cancel</button>
+    </div>
+  `);
+}
+
+window.updateBatch = async (batchId) => {
+  const batch = await dbGet('batches', batchId);
+  const firearmId = document.getElementById('b-firearm').value;
+  const bullet    = document.getElementById('b-bullet').value;
+  const powder    = document.getElementById('b-powder').value;
+  if (!firearmId || !bullet || !powder) { toast('Firearm, bullet, and powder required', 'error'); return; }
+
+  const type = document.getElementById('b-type').value;
+  const isLadder = type === 'Charge Ladder';
+  const prevCount = batch.cartridge_count;
+  const newCount = parseInt(document.getElementById('b-count').value) || 10;
+
+  batch.firearm_id = firearmId;
+  batch.bullet = bullet;
+  batch.powder = powder;
+  batch.primer = document.getElementById('b-primer').value;
+  batch.case_brand = document.getElementById('b-case').value;
+  batch.load_dev_type = type;
+  batch.cartridge_count = newCount;
+  batch.charge_fixed = isLadder ? null : (parseFloat(document.getElementById('b-charge-fixed').value) || null);
+  batch.charge_min = isLadder ? (parseFloat(document.getElementById('b-charge-min').value) || null) : null;
+  batch.charge_max = isLadder ? (parseFloat(document.getElementById('b-charge-max').value) || null) : null;
+  batch.coal = parseFloat(document.getElementById('b-coal').value) || null;
+  batch.coal_to_lands = parseFloat(document.getElementById('b-ctl').value) || null;
+  batch.jump = parseFloat(document.getElementById('b-jump').value) || null;
+  batch.bullet_weight_gr = parseFloat(document.getElementById('b-wt').value) || null;
+  batch.bc_g1 = parseFloat(document.getElementById('b-bc').value) || null;
+  batch.rds_source = document.getElementById('b-rds').value.trim();
+  batch.rds_barrel_length = parseFloat(document.getElementById('b-rds-bl').value) || null;
+  batch.rds_velo_min = parseFloat(document.getElementById('b-rds-vmin').value) || null;
+  batch.rds_velo_max = parseFloat(document.getElementById('b-rds-vmax').value) || null;
+  batch.loaded_date = document.getElementById('b-ldate').value;
+  batch.notes = document.getElementById('b-notes').value.trim();
+
+  // If cartridge count changed or charge params changed, regenerate the load table
+  // (preserve loaded state for rows that still exist)
+  if (newCount !== prevCount || isLadder) {
+    const freshCart = generateCartridges(batch);
+    const existingCart = batch.cartridges || [];
+    batch.cartridges = freshCart.map((c, i) => ({
+      ...c,
+      loaded: existingCart[i]?.loaded ?? false,
+      notes: existingCart[i]?.notes ?? '',
+    }));
+  }
+
+  await dbPut('batches', batch);
+  toast('Batch updated', 'success');
+  navigate('batch/' + batchId);
+};
+
+// ── NEW BATCH ──
+register('batches/new', async () => {
+  setTitle('New Batch', true);
+  document.getElementById('back-btn').onclick = () => navigate('batches');
+  const [firearms, comps] = await Promise.all([dbGetAll('firearms'), dbGetAll('components')]);
+  const bullets = comps.filter(c => c.type === 'bullet');
+  const powders = comps.filter(c => c.type === 'powder');
+  const primers = comps.filter(c => c.type === 'primer');
+  const cases   = comps.filter(c => c.type === 'case');
+  const opt = (arr) => arr.map(x => `<option>${x.name}</option>`).join('');
+  const fopt = firearms.map(f => `<option value="${f.name}">${f.name} — ${f.make_model}</option>`).join('');
+
+  render(`
+    <div class="section-title">Firearm & Components</div>
+    <div class="form-group">
+      <label>Firearm *</label>
+      <select class="form-control" id="b-firearm"><option value="">— Select —</option>${fopt}</select>
+    </div>
+    <div class="form-group">
+      <label>Bullet *</label>
+      <select class="form-control" id="b-bullet" onchange="autofillBulletData()"><option value="">— Select —</option>${opt(bullets)}</select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Powder *</label>
+        <select class="form-control" id="b-powder"><option value="">— Select —</option>${opt(powders)}</select>
+      </div>
+      <div class="form-group">
+        <label>Primer</label>
+        <select class="form-control" id="b-primer"><option value="">— Select —</option>${opt(primers)}</select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Case</label>
+      <select class="form-control" id="b-case"><option value="">— Select —</option>${opt(cases)}</select>
+    </div>
+
+    <div class="section-title">Load Development</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Type *</label>
+        <select class="form-control" id="b-type" onchange="toggleChargeFields()">
+          <option>Validation Batch</option>
+          <option>Charge Ladder</option>
+          <option>Seating Ladder</option>
+          <option>Jump Ladder</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Cartridge Count</label>
+        <input class="form-control" id="b-count" type="number" inputmode="numeric" min="1" max="50" value="10">
+      </div>
+    </div>
+
+    <div id="charge-fixed-group" class="form-group">
+      <label>Charge Weight (gr) *</label>
+      <input class="form-control" id="b-charge-fixed" type="number" inputmode="decimal" step="0.1" placeholder="44.0">
+    </div>
+    <div id="charge-range-group" style="display:none">
+      <div class="form-row three">
+        <div class="form-group">
+          <label>Min (gr)</label>
+          <input class="form-control" id="b-charge-min" type="number" inputmode="decimal" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Max (gr)</label>
+          <input class="form-control" id="b-charge-max" type="number" inputmode="decimal" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Steps</label>
+          <input class="form-control" id="b-charge-steps" type="number" inputmode="numeric" min="1" value="1">
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">Seating / Jump</div>
+    <div class="form-row three">
+      <div class="form-group">
+        <label>COAL (in)</label>
+        <input class="form-control" id="b-coal" type="number" inputmode="decimal" step="0.001" placeholder="2.800">
+      </div>
+      <div class="form-group">
+        <label>Coal-to-Lands</label>
+        <input class="form-control" id="b-ctl" type="number" inputmode="decimal" step="0.001" placeholder="2.910">
+      </div>
+      <div class="form-group">
+        <label>Jump (in)</label>
+        <input class="form-control" id="b-jump" type="number" inputmode="decimal" step="0.001" placeholder="0.050">
+      </div>
+    </div>
+
+    <div class="section-title">Bullet Data (for Ballistics)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Bullet Weight (gr)</label>
+        <input class="form-control" id="b-wt" type="number" inputmode="decimal" step="0.1" placeholder="178">
+      </div>
+      <div class="form-group">
+        <label>BC G1</label>
+        <input class="form-control" id="b-bc" type="number" inputmode="decimal" step="0.001" placeholder="0.530">
+      </div>
+    </div>
+
+    <div class="section-title">Reference Data (RDS)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>RDS Source</label>
+        <input class="form-control" id="b-rds" placeholder="e.g. Hornady, Hodgdon">
+      </div>
+      <div class="form-group">
+        <label>RDS Barrel (in)</label>
+        <input class="form-control" id="b-rds-bl" type="number" inputmode="decimal" step="0.5">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>RDS Velo Min</label>
+        <input class="form-control" id="b-rds-vmin" type="number" placeholder="2300">
+      </div>
+      <div class="form-group">
+        <label>RDS Velo Max</label>
+        <input class="form-control" id="b-rds-vmax" type="number" placeholder="2550">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:8px">
+      <label>Loaded Date</label>
+      <input class="form-control" id="b-ldate" type="date" value="${new Date().toISOString().slice(0,10)}">
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea class="form-control" id="b-notes" placeholder="Optional notes..."></textarea>
+    </div>
+
+    <button class="btn btn-primary" style="margin-top:8px" onclick="saveBatch()">Create Batch</button>
+  `);
+});
+
+// ── Bullet inventory lookup ──
+async function getBulletData(bulletName) {
+  if (!bulletName) return {};
+  const comps = await dbGetAll('components');
+  return comps.find(c => c.type === 'bullet' && c.name === bulletName) || {};
+}
+
+window.autofillBulletData = async () => {
+  const name = document.getElementById('b-bullet')?.value;
+  if (!name) return;
+  const b = await getBulletData(name);
+  const bcEl = document.getElementById('b-bc');
+  const wtEl = document.getElementById('b-wt');
+  if (bcEl && b.bc_g1 && !bcEl.value) bcEl.value = b.bc_g1;
+  if (wtEl && b.bullet_weight_gr && !wtEl.value) wtEl.value = b.bullet_weight_gr;
+  if (b.bc_g1 || b.bullet_weight_gr)
+    toast(`BC G1: ${b.bc_g1 || '—'} · Wt: ${b.bullet_weight_gr || '—'} gr`, 'success');
+};
+
+window.toggleChargeFields = () => {
+  const t = document.getElementById('b-type').value;
+  const isLadder = t === 'Charge Ladder';
+  document.getElementById('charge-fixed-group').style.display = isLadder ? 'none' : '';
+  document.getElementById('charge-range-group').style.display = isLadder ? '' : 'none';
+};
+
+window.saveBatch = async () => {
+  const firearmId = document.getElementById('b-firearm').value;
+  const bullet    = document.getElementById('b-bullet').value;
+  const powder    = document.getElementById('b-powder').value;
+  const type      = document.getElementById('b-type').value;
+
+  if (!firearmId || !bullet || !powder) { toast('Firearm, bullet, and powder required', 'error'); return; }
+
+  const isLadder = type === 'Charge Ladder';
+  const chargeFixed = isLadder ? null : parseFloat(document.getElementById('b-charge-fixed').value) || null;
+  const chargeMin = isLadder ? parseFloat(document.getElementById('b-charge-min').value) || null : null;
+  const chargeMax = isLadder ? parseFloat(document.getElementById('b-charge-max').value) || null : null;
+
+  const chargeStr = isLadder ? `${chargeMin}-${chargeMax}` : chargeFixed;
+  const batchId = genBatchId(firearmId, bullet, type, chargeStr);
+
+  const existing = await dbGet('batches', batchId);
+  const finalId = existing ? batchId + '-' + Date.now().toString(36) : batchId;
+
+  const batch = {
+    id: finalId,
+    firearm_id: firearmId,
+    bullet, powder,
+    primer: document.getElementById('b-primer').value,
+    case_brand: document.getElementById('b-case').value,
+    load_dev_type: type,
+    cartridge_count: parseInt(document.getElementById('b-count').value) || 10,
+    charge_fixed: chargeFixed,
+    charge_min: chargeMin,
+    charge_max: chargeMax,
+    coal: parseFloat(document.getElementById('b-coal').value) || null,
+    coal_to_lands: parseFloat(document.getElementById('b-ctl').value) || null,
+    jump: parseFloat(document.getElementById('b-jump').value) || null,
+    bullet_weight_gr: parseFloat(document.getElementById('b-wt').value) || null,
+    bc_g1: parseFloat(document.getElementById('b-bc').value) || null,
+    rds_source: document.getElementById('b-rds').value.trim(),
+    rds_barrel_length: parseFloat(document.getElementById('b-rds-bl').value) || null,
+    rds_velo_min: parseFloat(document.getElementById('b-rds-vmin').value) || null,
+    rds_velo_max: parseFloat(document.getElementById('b-rds-vmax').value) || null,
+    loaded_date: document.getElementById('b-ldate').value,
+    notes: document.getElementById('b-notes').value.trim(),
+    shots: [],
+    created_at: new Date().toISOString(),
+  };
+
+  await dbPut('batches', batch);
+  toast('Batch created', 'success');
+  navigate('batch/' + finalId);
+};
+
+// ── BATCH DETAIL ──
+routes['batch'] = async ({ id }) => {
+  if (!id) { navigate('batches'); return; }
+  const batch = await dbGet('batches', id);
+  if (!batch) { toast('Batch not found', 'error'); navigate('batches'); return; }
+
+  setTitle('Batch Detail', true, `<button class="action-btn" onclick="navigate('range-card/${id}')">⊞ Card</button>`);
+  document.getElementById('back-btn').onclick = () => navigate('batches');
+
+  const stats = batch.shots?.length ? calcStats(batch.shots.map(s => s.velocity)) : null;
+
+  render(`
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab(this,'tab-recipe')">Recipe</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-load')">Load Table</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-chrono')">Chrono</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-drop')">Drop Table</button>
+    </div>
+
+    <!-- RECIPE TAB -->
+    <div class="tab-content active" id="tab-recipe">
+      <div class="card">
+        <div class="card-header"><h3>Load Recipe</h3></div>
+        <div class="card-body">
+          <div class="data-grid three" style="margin-bottom:12px">
+            <div class="data-item"><label>Firearm</label><div class="val">${batch.firearm_id || '—'}</div></div>
+            <div class="data-item"><label>Type</label><div class="val">${batch.load_dev_type || '—'}</div></div>
+            <div class="data-item"><label>Loaded</label><div class="val">${fmtDate(batch.loaded_date)}</div></div>
+          </div>
+          <div class="data-grid" style="margin-bottom:12px">
+            <div class="data-item"><label>Bullet</label><div class="val">${batch.bullet || '—'}</div></div>
+            <div class="data-item"><label>Powder</label><div class="val">${batch.powder || '—'}</div></div>
+          </div>
+          <div class="data-grid" style="margin-bottom:12px">
+            <div class="data-item"><label>Primer</label><div class="val">${batch.primer || '—'}</div></div>
+            <div class="data-item"><label>Case</label><div class="val">${batch.case_brand || '—'}</div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="data-grid three">
+            <div class="data-item">
+              <label>Charge (gr)</label>
+              <div class="val big">
+                ${batch.charge_fixed != null ? batch.charge_fixed :
+                  batch.charge_min != null ? `${batch.charge_min}–${batch.charge_max}` : '—'}
+              </div>
+            </div>
+            <div class="data-item"><label>COAL (in)</label><div class="val big">${fmt(batch.coal, 3)}</div></div>
+            <div class="data-item"><label>Jump (in)</label><div class="val big">${fmt(batch.jump, 3)}</div></div>
+          </div>
+          ${batch.coal_to_lands ? `<div class="data-item" style="margin-top:12px"><label>Coal to Lands</label><div class="val">${fmt(batch.coal_to_lands, 3)}"</div></div>` : ''}
+          ${batch.bc_g1 ? `
+          <div class="divider"></div>
+          <div class="data-grid">
+            <div class="data-item"><label>BC (G1)</label><div class="val">${batch.bc_g1}</div></div>
+            <div class="data-item"><label>Bullet Wt</label><div class="val">${batch.bullet_weight_gr ? batch.bullet_weight_gr + ' gr' : '—'}</div></div>
+          </div>` : ''}
+          ${batch.rds_source ? `
+          <div class="divider"></div>
+          <div class="data-grid three">
+            <div class="data-item"><label>RDS Source</label><div class="val">${batch.rds_source}</div></div>
+            <div class="data-item"><label>RDS Barrel</label><div class="val">${batch.rds_barrel_length ? batch.rds_barrel_length + '"' : '—'}</div></div>
+            <div class="data-item"><label>RDS Velo</label><div class="val">${batch.rds_velo_min || '—'}–${batch.rds_velo_max || '—'}</div></div>
+          </div>` : ''}
+          ${batch.notes ? `<div class="divider"></div><p style="font-size:13px;color:var(--muted)">${batch.notes}</p>` : ''}
+        </div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary btn-sm" onclick="navigate('batches/edit/${id}')">✎ Edit Batch</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteBatch('${id}')">Delete Batch</button>
+      </div>
+    </div>
+
+    <!-- LOAD TABLE TAB -->
+    <div class="tab-content" id="tab-load">
+      <div id="load-table-content"></div>
+    </div>
+
+    <!-- CHRONO TAB -->
+    <div class="tab-content" id="tab-chrono">
+      <div id="chrono-content"></div>
+    </div>
+
+    <!-- DROP TABLE TAB -->
+    <div class="tab-content" id="tab-drop">
+      <div id="drop-content"></div>
+    </div>
+  `);
+
+  renderChronoTab(batch);
+  renderDropTab(batch);
+  renderLoadTable(batch);
+};
+
+window.switchTab = (btn, tabId) => {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+};
+
+// ── LOAD TABLE ──
+function generateCartridges(batch) {
+  const count = batch.cartridge_count || 10;
+  const isLadder = batch.load_dev_type === 'Charge Ladder';
+  const isSeatLadder = batch.load_dev_type === 'Seating Ladder';
+  const isJumpLadder = batch.load_dev_type === 'Jump Ladder';
+  const existing = batch.cartridges || [];
+
+  const cartridges = [];
+  for (let i = 0; i < count; i++) {
+    const ex = existing[i] || {};
+
+    let charge = batch.charge_fixed ?? null;
+    let coal = batch.coal ?? null;
+    let jump = batch.jump ?? null;
+
+    if (isLadder && batch.charge_min != null && batch.charge_max != null) {
+      const step = count > 1 ? (batch.charge_max - batch.charge_min) / (count - 1) : 0;
+      charge = parseFloat((batch.charge_min + step * i).toFixed(2));
+    }
+    if (isSeatLadder && batch.charge_min != null && batch.charge_max != null) {
+      const step = count > 1 ? (batch.charge_max - batch.charge_min) / (count - 1) : 0;
+      coal = parseFloat((batch.charge_min + step * i).toFixed(4));
+    }
+    if (isJumpLadder && batch.jump_min != null && batch.jump_max != null) {
+      const step = count > 1 ? (batch.jump_max - batch.jump_min) / (count - 1) : 0;
+      jump = parseFloat((batch.jump_min + step * i).toFixed(4));
+    }
+
+    cartridges.push({
+      num: i + 1,
+      id: `${batch.id}-${String(i + 1).padStart(3, '0')}`,
+      charge: ex.charge ?? charge,
+      coal: ex.coal ?? coal,
+      jump: ex.jump ?? jump,
+      loaded: ex.loaded ?? false,
+      notes: ex.notes ?? '',
+    });
+  }
+  return cartridges;
+}
+
+function renderLoadTable(batch) {
+  const el = document.getElementById('load-table-content');
+  if (!el) return;
+
+  const cartridges = generateCartridges(batch);
+  const loaded = cartridges.filter(c => c.loaded).length;
+  const total = cartridges.length;
+  const remaining = total - loaded;
+  const pct = total > 0 ? Math.round(loaded / total * 100) : 0;
+
+  const chargeStr = batch.charge_fixed != null ? `${batch.charge_fixed} gr`
+    : (batch.charge_min != null ? `${batch.charge_min}–${batch.charge_max} gr` : '—');
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-header"><h3>Batch Reference</h3></div>
+      <div class="card-body" style="padding:12px 16px">
+
+        <div class="data-grid three" style="margin-bottom:12px">
+          <div class="data-item"><label>Brass</label><div class="val" style="font-size:14px">${batch.case_brand || '—'}</div></div>
+          <div class="data-item"><label>Bullet</label><div class="val" style="font-size:14px">${batch.bullet || '—'}</div></div>
+          <div class="data-item"><label>Powder</label><div class="val" style="font-size:14px">${batch.powder || '—'}</div></div>
+        </div>
+
+        <div class="data-grid three" style="margin-bottom:12px">
+          <div class="data-item"><label>Primer</label><div class="val" style="font-size:14px">${batch.primer || '—'}</div></div>
+          <div class="data-item"><label>Charge</label><div class="val accent" style="font-size:14px;font-weight:700">${chargeStr}</div></div>
+          <div class="data-item"><label>COAL</label><div class="val" style="font-size:14px;font-family:monospace">${batch.coal != null ? fmt(batch.coal,3)+'"' : '—'}</div></div>
+        </div>
+
+        <div class="divider" style="margin:10px 0"></div>
+
+        <div class="data-grid three">
+          <div class="data-item"><label>Total</label><div class="val big">${total}</div></div>
+          <div class="data-item"><label>Loaded</label><div class="val big" style="color:var(--success)">${loaded}</div></div>
+          <div class="data-item"><label>Remaining</label><div class="val big" style="color:${remaining > 0 ? 'var(--accent)' : 'var(--success)'}">${remaining}</div></div>
+        </div>
+        <div style="margin-top:12px;background:var(--surface2);border-radius:6px;height:8px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:var(--success);border-radius:6px;transition:width .3s"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-group" style="margin-bottom:12px">
+      <button class="btn btn-secondary btn-sm" onclick="resetLoadTable('${batch.id}')">↺ Reset All</button>
+      <button class="btn btn-secondary btn-sm" onclick="checkAllLoaded('${batch.id}')">✓ Mark All Loaded</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Bench Reference</h3>
+        <span class="text-muted" style="font-size:11px">${batch.bullet || '—'} · ${batch.powder || '—'}</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="load-bench-table" id="bench-table">
+          <thead>
+            <tr>
+              <th class="lt-done"></th>
+              <th class="lt-num">#</th>
+              <th class="lt-charge">Charge (gr)</th>
+              <th class="lt-coal">COAL"</th>
+              <th class="lt-jump">Jump"</th>
+              <th class="lt-notes">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cartridges.map((c, i) => `
+            <tr id="lt-row-${i}" class="${c.loaded ? 'lt-done-row' : ''}">
+              <td class="lt-done">
+                <label class="lt-checkbox">
+                  <input type="checkbox" ${c.loaded ? 'checked' : ''} onchange="toggleLoaded('${batch.id}', ${i}, this.checked)">
+                  <span class="lt-checkmark"></span>
+                </label>
+              </td>
+              <td class="lt-num">${c.num}</td>
+              <td class="lt-charge">${c.charge != null ? c.charge : '—'}</td>
+              <td class="lt-coal">${c.coal != null ? fmt(c.coal, 3) : '—'}</td>
+              <td class="lt-jump">${c.jump != null ? fmt(c.jump, 3) : '—'}</td>
+              <td class="lt-notes">
+                <input class="lt-note-input" placeholder="—" value="${c.notes || ''}"
+                  onblur="saveCartridgeNote('${batch.id}', ${i}, this.value)">
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+window.toggleLoaded = async (batchId, idx, checked) => {
+  const batch = await dbGet('batches', batchId);
+  if (!batch.cartridges) batch.cartridges = generateCartridges(batch);
+  batch.cartridges[idx].loaded = checked;
+  await dbPut('batches', batch);
+  const row = document.getElementById(`lt-row-${idx}`);
+  if (row) row.className = checked ? 'lt-done-row' : '';
+  // Update counter
+  const loaded = batch.cartridges.filter(c => c.loaded).length;
+  const total = batch.cartridges.length;
+  renderLoadSummary(loaded, total);
+};
+
+window.saveCartridgeNote = async (batchId, idx, val) => {
+  const batch = await dbGet('batches', batchId);
+  if (!batch.cartridges) batch.cartridges = generateCartridges(batch);
+  batch.cartridges[idx].notes = val.trim();
+  await dbPut('batches', batch);
+};
+
+window.resetLoadTable = async (batchId) => {
+  if (!confirm_('Reset all checkboxes to unloaded?')) return;
+  const batch = await dbGet('batches', batchId);
+  batch.cartridges = generateCartridges(batch).map(c => ({ ...c, loaded: false }));
+  await dbPut('batches', batch);
+  renderLoadTable(batch);
+  toast('Reset complete');
+};
+
+window.checkAllLoaded = async (batchId) => {
+  const batch = await dbGet('batches', batchId);
+  if (!batch.cartridges) batch.cartridges = generateCartridges(batch);
+  batch.cartridges.forEach(c => c.loaded = true);
+  await dbPut('batches', batch);
+  renderLoadTable(batch);
+  toast('All marked loaded', 'success');
+};
+
+function renderLoadSummary(loaded, total) {
+  const remaining = total - loaded;
+  const pct = total > 0 ? Math.round(loaded / total * 100) : 0;
+  // Quick patch — just re-query the values already on screen
+  const els = document.querySelectorAll('#load-table-content .val.big');
+  if (els[1]) els[1].textContent = loaded;
+  if (els[2]) { els[2].textContent = remaining; els[2].style.color = remaining > 0 ? 'var(--accent)' : 'var(--success)'; }
+  const bar = document.querySelector('#load-table-content [style*="background:var(--success)"]');
+  if (bar) bar.style.width = pct + '%';
+}
+
+function renderChronoTab(batch) {
+  const el = document.getElementById('chrono-content');
+  if (!el) return;
+  const shots = batch.shots || [];
+  const stats = shots.length ? calcStats(shots.map(s => s.velocity)) : null;
+
+  let shotsHtml = '';
+  if (shots.length) {
+    shotsHtml = `
+      <div class="stat-grid" style="margin-bottom:16px">
+        <div class="stat-box">
+          <div class="s-label">AVG</div>
+          <div class="s-val">${Math.round(stats.avg)}</div>
+          <div class="s-unit">fps</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-label">SD</div>
+          <div class="s-val">${fmt(stats.sd, 1)}</div>
+          <div class="s-unit">fps</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-label">ES</div>
+          <div class="s-val">${fmt(stats.es, 1)}</div>
+          <div class="s-unit">fps</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Shot Data</h3>
+          <button class="btn btn-secondary btn-sm" onclick="clearShots('${batch.id}')">Clear</button>
+        </div>
+        <div class="card-body" style="padding:0 0 4px">
+          <table class="shot-table">
+            <thead><tr><th>#</th><th>Velocity</th><th>Δ Avg</th>${batch.load_dev_type === 'Charge Ladder' ? '<th>Charge</th>' : ''}</tr></thead>
+            <tbody>
+              ${shots.map((s, i) => {
+                const delta = stats ? s.velocity - stats.avg : 0;
+                const deltaClass = delta >= 0 ? 'delta-pos' : 'delta-neg';
+                return `<tr>
+                  <td>${i + 1}</td>
+                  <td class="fps-cell">${Math.round(s.velocity)}</td>
+                  <td class="${deltaClass}">${delta >= 0 ? '+' : ''}${fmt(delta, 1)}</td>
+                  ${batch.load_dev_type === 'Charge Ladder' ? `<td>${s.charge != null ? s.charge + ' gr' : '—'}</td>` : ''}
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  } else {
+    shotsHtml = `<p class="text-muted" style="font-size:13px;margin-bottom:16px">No velocity data recorded yet.</p>`;
+  }
+
+  el.innerHTML = `
+    ${shotsHtml}
+    <div class="btn-group" style="margin-bottom:12px">
+      <button class="btn btn-primary" style="flex:1" onclick="showManualEntry('${batch.id}')">✎ Manual Entry</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="showCSVImport('${batch.id}')">↑ Import CSV</button>
+    </div>
+    ${batch.range_date ? `<p class="text-muted" style="font-size:12px">Range date: ${fmtDate(batch.range_date)}</p>` : ''}
+  `;
+}
+
+window.clearShots = async (batchId) => {
+  if (!confirm_('Clear all shot data for this batch?')) return;
+  const batch = await dbGet('batches', batchId);
+  batch.shots = [];
+  batch.range_date = null;
+  await dbPut('batches', batch);
+  renderChronoTab(batch);
+  toast('Shots cleared');
+};
+
+window.showManualEntry = async (batchId) => {
+  const batch = await dbGet('batches', batchId);
+  const isLadder = batch.load_dev_type === 'Charge Ladder';
+  const count = batch.cartridge_count || 10;
+  const existing = batch.shots || [];
+
+  let rows = '';
+  for (let i = 0; i < count; i++) {
+    const s = existing[i] || {};
+    rows += `
+      <div class="velo-input-row">
+        <span class="shot-num">${i+1}</span>
+        ${isLadder ? `<input type="number" inputmode="decimal" step="0.1" class="charge-in" placeholder="gr" style="width:60px;flex:none" value="${s.charge != null ? s.charge : ''}">` : ''}
+        <input type="number" inputmode="numeric" step="1" class="velo-in" placeholder="fps" value="${s.velocity || ''}">
+      </div>`;
+  }
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="overlay" id="manual-overlay" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <h3>Manual Velocity Entry</h3>
+        <div class="form-group">
+          <label>Range Date</label>
+          <input class="form-control" id="manual-date" type="date" value="${batch.range_date || new Date().toISOString().slice(0,10)}">
+        </div>
+        <div id="manual-rows">${rows}</div>
+        <button class="btn btn-secondary btn-sm" id="add-row-btn" onclick="addManualRow(${isLadder})" style="margin-bottom:12px">+ Add Shot</button>
+        <div id="live-stats" style="margin-bottom:16px"></div>
+        <button class="btn btn-primary" onclick="saveManualEntry('${batchId}')">Save</button>
+      </div>
+    </div>`);
+
+  // Live stats on input
+  document.getElementById('manual-overlay').addEventListener('input', updateLiveStats);
+  updateLiveStats();
+};
+
+window.addManualRow = (isLadder) => {
+  const rows = document.getElementById('manual-rows');
+  const num = rows.querySelectorAll('.velo-input-row').length + 1;
+  const div = document.createElement('div');
+  div.className = 'velo-input-row';
+  div.innerHTML = `
+    <span class="shot-num">${num}</span>
+    ${isLadder ? `<input type="number" inputmode="decimal" step="0.1" class="charge-in" placeholder="gr" style="width:60px;flex:none">` : ''}
+    <input type="number" inputmode="numeric" step="1" class="velo-in" placeholder="fps">`;
+  rows.appendChild(div);
+};
+
+function updateLiveStats() {
+  const inputs = document.querySelectorAll('.velo-in');
+  const velos = Array.from(inputs).map(i => parseFloat(i.value)).filter(v => !isNaN(v) && v > 0);
+  const el = document.getElementById('live-stats');
+  if (!el) return;
+  if (!velos.length) { el.innerHTML = ''; return; }
+  const s = calcStats(velos);
+  el.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="s-label">AVG</div><div class="s-val">${Math.round(s.avg)}</div><div class="s-unit">fps</div></div>
+      <div class="stat-box"><div class="s-label">SD</div><div class="s-val">${fmt(s.sd,1)}</div><div class="s-unit">fps</div></div>
+      <div class="stat-box"><div class="s-label">ES</div><div class="s-val">${fmt(s.es,1)}</div><div class="s-unit">fps</div></div>
+    </div>`;
+}
+
+window.saveManualEntry = async (batchId) => {
+  const batch = await dbGet('batches', batchId);
+  const rows = document.querySelectorAll('#manual-rows .velo-input-row');
+  const shots = [];
+  rows.forEach(row => {
+    const veloEl = row.querySelector('.velo-in');
+    const chargeEl = row.querySelector('.charge-in');
+    const v = parseFloat(veloEl?.value);
+    if (!isNaN(v) && v > 0) {
+      const shot = { velocity: v };
+      if (chargeEl) { const c = parseFloat(chargeEl.value); if (!isNaN(c)) shot.charge = c; }
+      shots.push(shot);
+    }
+  });
+  if (!shots.length) { toast('No valid velocities', 'error'); return; }
+  batch.shots = shots;
+  batch.range_date = document.getElementById('manual-date').value;
+  await dbPut('batches', batch);
+  document.getElementById('manual-overlay').remove();
+  toast(`${shots.length} shots saved`, 'success');
+  renderChronoTab(batch);
+  renderDropTab(batch);
+  // Offer to increment case fire count
+  if (batch.case_brand) promptFireCount(batch.case_brand);
+};
+
+window.showCSVImport = (batchId) => {
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="overlay" id="csv-overlay" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <h3>Import Garmin CSV</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Paste the full Garmin Xero Pro C1 CSV export below (include all rows).</p>
+        <div class="form-group">
+          <label>Range Date</label>
+          <input class="form-control" id="csv-date" type="date" value="${new Date().toISOString().slice(0,10)}">
+        </div>
+        <div class="form-group">
+          <label>CSV Data</label>
+          <textarea class="form-control" id="csv-text" style="min-height:160px;font-family:monospace;font-size:12px" placeholder="SHOT #,SPEED (FPS),Δ AVG (FPS),..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="processCSV('${batchId}')">Import</button>
+      </div>
+    </div>`);
+};
+
+window.processCSV = async (batchId) => {
+  const text = document.getElementById('csv-text').value;
+  const shots = parseGarminCSV(text);
+  if (!shots.length) { toast('No valid shot data found', 'error'); return; }
+  const batch = await dbGet('batches', batchId);
+  batch.shots = shots.map(s => ({ velocity: s.velocity }));
+  batch.range_date = document.getElementById('csv-date').value;
+  await dbPut('batches', batch);
+  document.getElementById('csv-overlay').remove();
+  toast(`${shots.length} shots imported`, 'success');
+  renderChronoTab(batch);
+  if (batch.case_brand) promptFireCount(batch.case_brand);
+};
+
+// Prompt to increment fire count after a range session
+async function promptFireCount(caseBrand) {
+  const comps = await dbGetAll('components');
+  const caseComp = comps.find(c => c.type === 'case' && c.name === caseBrand);
+  if (!caseComp) return;
+  const current = caseComp.fire_count ?? 0;
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="overlay" id="fc-prompt" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <h3>Update Case Fire Count?</h3>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px">
+          <strong style="color:var(--text)">${caseBrand}</strong> is currently at
+          <strong style="color:var(--accent)">${current} fire${current !== 1 ? 's' : ''}</strong>.
+          Increment to ${current + 1}?
+        </p>
+        ${current + 1 >= 5 ? `<div class="fire-badge" style="margin-bottom:16px;font-size:13px">⚠ At ${current+1} fires — schedule anneal / inspect</div>` :
+          current + 1 >= 3 ? `<div class="fire-badge" style="margin-bottom:16px;color:var(--accent);border-color:rgba(210,153,34,.4);background:rgba(210,153,34,.1)">At ${current+1} fires — check neck tension</div>` : ''}
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="confirmFireCount(${caseComp.id})">Yes, increment</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('fc-prompt').remove()">Skip</button>
+        </div>
+      </div>
+    </div>`);
+}
+
+window.confirmFireCount = async (id) => {
+  const c = await dbGet('components', id);
+  c.fire_count = (c.fire_count ?? 0) + 1;
+  await dbPut('components', c);
+  document.getElementById('fc-prompt')?.remove();
+  const warn = c.fire_count >= 5 ? ' — Anneal recommended' : c.fire_count >= 3 ? ' — Check necks' : '';
+  toast(`Fire count: ${c.fire_count}${warn}`, c.fire_count >= 5 ? 'error' : c.fire_count >= 3 ? '' : 'success');
+};
+
+async function renderDropTab(batch) {
+  const el = document.getElementById('drop-content');
+  if (!el) return;
+
+  const stats = batch.shots?.length ? calcStats(batch.shots.map(s => s.velocity)) : null;
+  const mv = stats?.avg || batch.rds_velo_fixed || null;
+
+  // Resolve BC and weight: batch fields first, fall back to inventory
+  const inv = await getBulletData(batch.bullet);
+  const resolvedBC  = batch.bc_g1          || inv.bc_g1           || null;
+  const resolvedWt  = batch.bullet_weight_gr|| inv.bullet_weight_gr|| null;
+  const invSource   = !batch.bc_g1 && inv.bc_g1 ? ` <span class="text-muted" style="font-size:11px">(from inventory)</span>` : '';
+
+  el.innerHTML = `
+    <div class="section-title">Environmental Conditions</div>
+    <div class="env-strip">
+      <div><label>Temp (°F)</label><input type="number" inputmode="numeric" id="env-temp" value="59" onchange="recomputeDrop('${batch.id}')"></div>
+      <div><label>Alt (ft)</label><input type="number" inputmode="numeric" id="env-alt" value="0" onchange="recomputeDrop('${batch.id}')"></div>
+      <div><label>Humidity %</label><input type="number" inputmode="numeric" id="env-hum" value="50" onchange="recomputeDrop('${batch.id}')"></div>
+    </div>
+    <div class="form-row" style="margin-bottom:16px">
+      <div class="form-group">
+        <label>Zero Range (yds)</label>
+        <input class="form-control" id="env-zero" type="number" inputmode="numeric" value="100" onchange="recomputeDrop('${batch.id}')">
+      </div>
+      <div class="form-group">
+        <label>Muzzle Vel (fps)</label>
+        <input class="form-control" id="env-mv" type="number" inputmode="numeric" value="${mv ? Math.round(mv) : ''}" placeholder="From chrono">
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:16px">
+      <div class="form-group">
+        <label>BC G1${invSource}</label>
+        <input class="form-control" id="drop-bc" type="number" inputmode="decimal" step="0.001" value="${resolvedBC || ''}" placeholder="0.530">
+      </div>
+      <div class="form-group">
+        <label>Bullet Wt (gr)${invSource}</label>
+        <input class="form-control" id="drop-wt" type="number" inputmode="decimal" step="0.1" value="${resolvedWt || ''}" placeholder="178">
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="recomputeDrop('${batch.id}')" style="margin-bottom:16px">Compute Drop Table</button>
+    <div id="drop-table-result"></div>
+  `;
+}
+
+window.recomputeDrop = async (batchId) => {
+  const batch = await dbGet('batches', batchId);
+  const stats = batch.shots?.length ? calcStats(batch.shots.map(s => s.velocity)) : null;
+
+  const inv = await getBulletData(batch.bullet);
+  const mv = parseFloat(document.getElementById('env-mv').value) || (stats?.avg) || batch.rds_velo_fixed;
+  const bc = parseFloat(document.getElementById('drop-bc')?.value) || batch.bc_g1 || inv.bc_g1;
+  const wt = parseFloat(document.getElementById('drop-wt')?.value) || batch.bullet_weight_gr || inv.bullet_weight_gr;
+  const temp = parseFloat(document.getElementById('env-temp').value) || 59;
+  const alt = parseFloat(document.getElementById('env-alt').value) || 0;
+  const hum = parseFloat(document.getElementById('env-hum').value) || 50;
+  const zero = parseFloat(document.getElementById('env-zero').value) || 100;
+
+  if (!mv || !bc || !wt) {
+    document.getElementById('drop-table-result').innerHTML = `<p class="text-muted" style="font-size:13px">Enter muzzle velocity, BC G1, and bullet weight to compute.</p>`;
+    return;
+  }
+
+  const rows = computeDropTable(mv, bc, wt, temp, alt, hum, zero);
+  if (!rows || !rows.length) {
+    document.getElementById('drop-table-result').innerHTML = `<p class="text-danger">Ballistics computation failed. Check inputs.</p>`;
+    return;
+  }
+
+  document.getElementById('drop-table-result').innerHTML = `
+    <div class="card">
+      <div class="card-header"><h3>Ballistic Drop Table</h3><span class="text-muted" style="font-size:11px">Zero: ${zero} yds</span></div>
+      <div class="card-body" style="padding:0 0 4px;overflow-x:auto">
+        <table class="drop-table">
+          <thead><tr><th>Range</th><th>Vel (fps)</th><th>Drop (in)</th><th>Drop (MOA)</th><th>Energy</th></tr></thead>
+          <tbody>
+            ${rows.map(r => `
+            <tr class="${r.range === zero ? 'zero-row' : ''}">
+              <td>${r.range} yd</td>
+              <td>${r.velocity}</td>
+              <td>${r.drop_from_zero != null ? fmt(r.drop_from_zero, 1) : '—'}</td>
+              <td>${r.moa != null ? fmt(r.moa, 2) : '—'}</td>
+              <td>${r.energy} ft·lb</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="text-muted" style="font-size:11px;margin-top:8px">G1 BC: ${bc} &middot; MV: ${Math.round(mv)} fps &middot; ${wt} gr &middot; ${temp}°F / ${alt}ft / ${hum}%RH</p>
+  `;
+};
+
+window.deleteBatch = async (batchId) => {
+  if (!confirm_(`Delete batch ${batchId}? This cannot be undone.`)) return;
+  await dbDelete('batches', batchId);
+  toast('Batch deleted');
+  navigate('batches');
+};
+
+window.editBatchNotes = async (batchId) => {
+  const batch = await dbGet('batches', batchId);
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="overlay" id="notes-overlay" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <h3>Edit Notes</h3>
+        <div class="form-group">
+          <label>BC G1</label>
+          <input class="form-control" id="n-bc" type="number" inputmode="decimal" step="0.001" value="${batch.bc_g1 || ''}" placeholder="0.530">
+        </div>
+        <div class="form-group">
+          <label>Bullet Weight (gr)</label>
+          <input class="form-control" id="n-wt" type="number" value="${batch.bullet_weight_gr || ''}">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea class="form-control" id="n-notes">${batch.notes || ''}</textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveNotes('${batchId}')">Save</button>
+      </div>
+    </div>`);
+};
+
+window.saveNotes = async (batchId) => {
+  const batch = await dbGet('batches', batchId);
+  batch.bc_g1 = parseFloat(document.getElementById('n-bc').value) || batch.bc_g1;
+  batch.bullet_weight_gr = parseFloat(document.getElementById('n-wt').value) || batch.bullet_weight_gr;
+  batch.notes = document.getElementById('n-notes').value.trim();
+  await dbPut('batches', batch);
+  document.getElementById('notes-overlay').remove();
+  toast('Saved', 'success');
+  navigate('batch/' + batchId);
+};
+
+// ── RANGE CARD (mobile-optimized read-only) ──
+routes['range-card'] = async ({ id }) => {
+  if (!id) { navigate('batches'); return; }
+  const batch = await dbGet('batches', id);
+  if (!batch) { toast('Batch not found', 'error'); navigate('batches'); return; }
+
+  setTitle('Range Card', true, `<button class="action-btn" onclick="window.print()">Print</button>`);
+  document.getElementById('back-btn').onclick = () => navigate('batch/' + id);
+
+  const stats = batch.shots?.length ? calcStats(batch.shots.map(s => s.velocity)) : null;
+  const shots = batch.shots || [];
+
+  // Pre-resolve bullet data from inventory for ballistics
+  const invBullet = await getBulletData(batch.bullet);
+  const effBC = batch.bc_g1 || invBullet.bc_g1 || null;
+  const effWt = batch.bullet_weight_gr || invBullet.bullet_weight_gr || null;
+  let rcDropHtml = '';
+  if (effBC && stats?.avg) {
+    const rows = computeDropTable(Math.round(stats.avg), effBC, effWt || 150, 59, 0, 50, 100, 500);
+    if (rows && rows.length) {
+      rcDropHtml = `
+      <div class="rc-section">
+        <div class="rc-label" style="margin-bottom:8px">Ballistic Drop (100 yd zero · std conditions)</div>
+        <table class="drop-table" style="font-size:12px">
+          <thead><tr><th>Yds</th><th>Vel</th><th>Drop"</th><th>MOA</th></tr></thead>
+          <tbody>
+            ${rows.map(r => `<tr class="${r.range === 100 ? 'zero-row' : ''}">
+              <td>${r.range}</td><td>${r.velocity}</td>
+              <td>${r.drop_from_zero != null ? fmt(r.drop_from_zero, 1) : '—'}</td>
+              <td>${r.moa != null ? fmt(r.moa, 2) : '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <p style="font-size:10px;color:var(--muted);margin-top:6px">BC G1: ${effBC} · ${effWt || '?'} gr · ${Math.round(stats.avg)} fps</p>
+      </div>`;
+    }
+  }
+
+  render(`
+    <div class="range-card">
+      <div class="rc-head">
+        <h2>${batch.id}</h2>
+        <p>${fmtDate(batch.loaded_date)} &middot; ${batch.load_dev_type}</p>
+      </div>
+
+      <div class="rc-section">
+        <div class="rc-row">
+          <div>
+            <div class="rc-label">Firearm</div>
+            <div class="rc-val sm">${batch.firearm_id || '—'}</div>
+          </div>
+          <div>
+            <div class="rc-label">Case</div>
+            <div class="rc-val sm">${batch.case_brand || '—'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rc-section">
+        <div class="rc-row" style="gap:16px">
+          <div style="flex:2">
+            <div class="rc-label">Bullet</div>
+            <div class="rc-val sm">${batch.bullet || '—'}</div>
+          </div>
+          <div style="flex:2">
+            <div class="rc-label">Powder</div>
+            <div class="rc-val sm">${batch.powder || '—'}</div>
+          </div>
+          <div style="flex:1">
+            <div class="rc-label">Primer</div>
+            <div class="rc-val sm">${batch.primer || '—'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rc-section">
+        <div class="rc-row">
+          <div>
+            <div class="rc-label">Charge</div>
+            <div class="rc-val accent">
+              ${batch.charge_fixed != null ? batch.charge_fixed + ' gr' :
+                batch.charge_min != null ? `${batch.charge_min}–${batch.charge_max} gr` : '—'}
+            </div>
+          </div>
+          <div>
+            <div class="rc-label">COAL</div>
+            <div class="rc-val">${fmt(batch.coal, 3)}"</div>
+          </div>
+          <div>
+            <div class="rc-label">Jump</div>
+            <div class="rc-val">${fmt(batch.jump, 3)}"</div>
+          </div>
+        </div>
+      </div>
+
+      ${stats && stats.n > 0 ? `
+      <div class="rc-section">
+        <div class="rc-label" style="margin-bottom:10px">Velocity Summary (${stats.n} shots &middot; ${fmtDate(batch.range_date)})</div>
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="s-label">AVG</div>
+            <div class="s-val">${Math.round(stats.avg)}</div>
+            <div class="s-unit">fps</div>
+          </div>
+          <div class="stat-box">
+            <div class="s-label">SD</div>
+            <div class="s-val">${fmt(stats.sd, 1)}</div>
+            <div class="s-unit">fps</div>
+          </div>
+          <div class="stat-box">
+            <div class="s-label">ES</div>
+            <div class="s-val">${fmt(stats.es, 1)}</div>
+            <div class="s-unit">fps</div>
+          </div>
+        </div>
+      </div>` : ''}
+
+      ${shots.length > 0 ? `
+      <div class="rc-section">
+        <div class="rc-label" style="margin-bottom:8px">Shot Ladder</div>
+        <table class="shot-table">
+          <thead><tr><th>#</th><th>FPS</th><th>Δ Avg</th>${batch.load_dev_type === 'Charge Ladder' ? '<th>Charge</th>' : ''}</tr></thead>
+          <tbody>
+            ${shots.map((s, i) => {
+              const delta = stats ? s.velocity - stats.avg : 0;
+              const cls = delta >= 0 ? 'delta-pos' : 'delta-neg';
+              return `<tr>
+                <td>${i+1}</td>
+                <td class="fps-cell">${Math.round(s.velocity)}</td>
+                <td class="${cls}">${delta >= 0 ? '+' : ''}${fmt(delta, 1)}</td>
+                ${batch.load_dev_type === 'Charge Ladder' ? `<td>${s.charge != null ? s.charge + 'gr' : '—'}</td>` : ''}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
+
+      ${rcDropHtml}
+
+      ${batch.notes ? `<div class="rc-section"><div class="rc-label">Notes</div><p style="font-size:13px;margin-top:6px;color:var(--muted)">${batch.notes}</p></div>` : ''}
+    </div>
+  `);
+};
+
+// ── XLSX IMPORT ──
+register('import', () => {
+  setTitle('Sync & Import');
+  render(`
+
+    <!-- ── SYNC SECTION ── -->
+    <div class="section-title">Device Sync</div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><h3>Export</h3></div>
+      <div class="card-body">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:16px">
+          Export all your data as a JSON file. AirDrop or email it to another device, then import it there to sync.
+        </p>
+        <button class="btn btn-primary" onclick="exportData()">⬇ Export All Data</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-header"><h3>Import JSON</h3></div>
+      <div class="card-body">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:16px">
+          Import a previously exported JSON file. New records are added — existing records are never overwritten, so it is safe to import multiple times.
+        </p>
+        <div class="drop-zone" id="json-drop-zone" onclick="document.getElementById('json-file-input').click()">
+          <div style="font-size:32px">📲</div>
+          <p>Tap to select export file</p>
+          <p style="font-size:12px">.json</p>
+        </div>
+        <input type="file" id="json-file-input" accept=".json" style="display:none" onchange="handleJSONFile(event)">
+      </div>
+    </div>
+
+    <!-- ── EXCEL SECTION ── -->
+    <div class="section-title">One-Time Excel Import</div>
+    <div class="card">
+      <div class="card-header"><h3>Import from Spreadsheet</h3></div>
+      <div class="card-body">
+        <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Import your original Reloading Master .xlsx. Existing records are preserved.</p>
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <div style="font-size:32px">📂</div>
+          <p>Tap to select your .xlsx file</p>
+          <p style="font-size:12px">or drag and drop here</p>
+        </div>
+        <input type="file" id="file-input" accept=".xlsx,.xls" style="display:none" onchange="handleFile(event)">
+      </div>
+    </div>
+    <div id="import-result" style="margin-top:16px"></div>
+  `);
+
+  // Drag & drop for xlsx
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); handleDroppedFile(e.dataTransfer.files[0]); });
+
+  // Drag & drop for json
+  const jdz = document.getElementById('json-drop-zone');
+  jdz.addEventListener('dragover', e => { e.preventDefault(); jdz.classList.add('over'); });
+  jdz.addEventListener('dragleave', () => jdz.classList.remove('over'));
+  jdz.addEventListener('drop', e => { e.preventDefault(); jdz.classList.remove('over'); handleJSONDroppedFile(e.dataTransfer.files[0]); });
+});
+
+// ── EXPORT ──
+window.exportData = async () => {
+  try {
+    const [firearms, components, batches] = await Promise.all([
+      dbGetAll('firearms'), dbGetAll('components'), dbGetAll('batches')
+    ]);
+    const payload = {
+      version: 1,
+      app: 'ReloadingMaster',
+      exported_at: new Date().toISOString(),
+      firearms,
+      components,
+      batches,
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `reloading-master-${date}.json`;
+    const summary = `${batches.length} batches · ${firearms.length} firearms · ${components.length} components`;
+
+    // iOS / iPadOS: use share sheet so user can AirDrop, Save to Files, or email
+    if (navigator.share) {
+      try {
+        const file = new File([blob], filename, { type: 'application/json' });
+        await navigator.share({ files: [file], title: 'Reloading Master Export', text: summary });
+        toast('Export shared', 'success');
+        return;
+      } catch (shareErr) {
+        // User cancelled share or share failed — fall through to download
+        if (shareErr.name === 'AbortError') return;
+      }
+    }
+
+    // Desktop fallback: trigger download
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast(`Exported: ${summary}`, 'success');
+  } catch (err) {
+    toast('Export failed: ' + err.message, 'error');
+  }
+};
+
+// ── JSON IMPORT ──
+window.handleJSONFile = (e) => { if (e.target.files[0]) handleJSONDroppedFile(e.target.files[0]); };
+window.handleJSONDroppedFile = (file) => {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => processJSONImport(e.target.result);
+  reader.readAsText(file);
+};
+
+async function processJSONImport(text) {
+  const log = [];
+  const addLog = (msg, type = '') => log.push(`<div class="${type}">${msg}</div>`);
+
+  // Show log container — insert before Excel import section
+  let result = document.getElementById('import-result');
+  if (!result) {
+    document.querySelector('.card:last-child').insertAdjacentHTML('afterend', '<div id="import-result" style="margin-top:16px"></div>');
+    result = document.getElementById('import-result');
+  }
+  result.innerHTML = `<div class="import-log">Processing…</div>`;
+
+  try {
+    const data = JSON.parse(text);
+    if (!data.app || data.app !== 'ReloadingMaster') {
+      result.innerHTML = `<div class="import-log"><div class="err">Not a valid Reloading Master export file.</div></div>`;
+      return;
+    }
+
+    // ── Firearms ──
+    let fAdd = 0, fSkip = 0;
+    for (const f of (data.firearms || [])) {
+      const existing = await dbGetAll('firearms').then(fs => fs.find(x => x.name === f.name));
+      if (existing) { fSkip++; continue; }
+      const { id: _id, ...rest } = f; // strip old numeric id, let autoIncrement assign new one
+      await dbPut('firearms', rest);
+      fAdd++;
+    }
+    addLog(`✓ Firearms: ${fAdd} added, ${fSkip} skipped`, 'ok');
+
+    // ── Components ──
+    let cAdd = 0, cSkip = 0;
+    for (const c of (data.components || [])) {
+      const existing = await dbGetAll('components').then(cs => cs.find(x => x.type === c.type && x.name === c.name));
+      if (existing) { cSkip++; continue; }
+      const { id: _id, ...rest } = c;
+      await dbPut('components', rest);
+      cAdd++;
+    }
+    addLog(`✓ Components: ${cAdd} added, ${cSkip} skipped`, 'ok');
+
+    // ── Batches ──
+    let bAdd = 0, bSkip = 0;
+    for (const b of (data.batches || [])) {
+      const existing = await dbGet('batches', b.id);
+      if (existing) { bSkip++; continue; }
+      await dbPut('batches', b);
+      bAdd++;
+    }
+    addLog(`✓ Batches: ${bAdd} added, ${bSkip} skipped`, 'ok');
+
+    const exportDate = data.exported_at ? new Date(data.exported_at).toLocaleString() : 'unknown';
+    addLog(`<strong>Done.</strong> Exported from: ${exportDate}`, 'ok');
+    result.innerHTML = `
+      <div class="import-log">${log.join('')}</div>
+      <button class="btn btn-primary" style="margin-top:16px" onclick="navigate('dashboard')">Go to Dashboard</button>`;
+    toast('JSON import complete', 'success');
+
+  } catch (err) {
+    result.innerHTML = `<div class="import-log"><div class="err">Error: ${err.message}</div></div>`;
+    toast('Import failed', 'error');
+  }
+}
+
+window.handleFile = (e) => { if (e.target.files[0]) handleDroppedFile(e.target.files[0]); };
+
+window.handleDroppedFile = (file) => {
+  const reader = new FileReader();
+  reader.onload = e => processXLSX(e.target.result);
+  reader.readAsArrayBuffer(file);
+};
+
+async function processXLSX(buffer) {
+  const log = [];
+  const addLog = (msg, type = '') => log.push(`<div class="${type}">${msg}</div>`);
+  const result = document.getElementById('import-result');
+  result.innerHTML = `<div class="import-log">Processing...</div>`;
+
+  try {
+    const wb = XLSX.read(buffer, { type: 'array' });
+
+    // ── Firearms ──
+    const faSheet = wb.Sheets['Firearm Data'];
+    if (faSheet) {
+      const rows = XLSX.utils.sheet_to_json(faSheet, { defval: null });
+      let fCount = 0;
+      for (const r of rows) {
+        const name = r['Firearm ID'];
+        if (!name) continue;
+        const existing = await dbGetAll('firearms').then(fs => fs.find(f => f.name === name));
+        if (!existing) {
+          await dbPut('firearms', {
+            name: String(name),
+            make_model: String(r['Make/Model'] || ''),
+            chamber: String(r['Chamber'] || ''),
+            caliber: String(r['Caliber'] || ''),
+            barrel_length: parseFloat(r['Barrel Length (in)']) || null,
+            notes: String(r['Notes'] || ''),
+          });
+          fCount++;
+        }
+      }
+      addLog(`✓ Firearms: ${fCount} imported`, 'ok');
+    }
+
+    // ── Inventory ──
+    const invSheet = wb.Sheets['Inventory'];
+    if (invSheet) {
+      const rows = XLSX.utils.sheet_to_json(invSheet, { defval: null });
+      let cCount = 0;
+      const typeMap = { 'Bullets': 'bullet', 'Powders': 'powder', 'Primers': 'primer', 'Cases': 'case' };
+      for (const r of rows) {
+        for (const [col, type] of Object.entries(typeMap)) {
+          const name = r[col];
+          if (!name) continue;
+          const existing = await dbGetAll('components').then(cs => cs.find(c => c.type === type && c.name === String(name)));
+          if (!existing) {
+            await dbPut('components', { type, name: String(name), quantity: 0, fire_count: 0, notes: '' });
+            cCount++;
+          }
+        }
+      }
+      addLog(`✓ Components: ${cCount} imported`, 'ok');
+    }
+
+    // ── Batches ──
+    const batchSheet = wb.Sheets['Batch Data'];
+    if (batchSheet) {
+      const rows = XLSX.utils.sheet_to_json(batchSheet, { defval: null });
+      let bCount = 0, bSkip = 0;
+      for (const r of rows) {
+        const id = r['Batch ID'];
+        if (!id) continue;
+        const existing = await dbGet('batches', String(id));
+        if (existing) { bSkip++; continue; }
+
+        // Extract shot velocities
+        const shots = [];
+        for (let i = 1; i <= 50; i++) {
+          const key = `Shot VELO ${i}`;
+          const v = parseFloat(r[key]);
+          if (!isNaN(v) && v > 0) shots.push({ velocity: v });
+        }
+
+        const batch = {
+          id: String(id),
+          firearm_id: String(r['Firearm ID'] || ''),
+          bullet: String(r['Bullet'] || ''),
+          powder: String(r['Powder'] || ''),
+          primer: String(r['Primer'] || ''),
+          case_brand: String(r['Case'] || ''),
+          load_dev_type: String(r['Load Dev Type'] || 'Validation Batch'),
+          cartridge_count: parseInt(r['Cartridge Count']) || 10,
+          charge_fixed: parseFloat(r['Charge Fixed']) || null,
+          charge_min: parseFloat(r['Charge Weight Min']) || null,
+          charge_max: parseFloat(r['Charge Weight Max']) || null,
+          coal: parseFloat(r['RDS COAL']) || null,
+          coal_to_lands: parseFloat(r['COAL To LANDS']) || null,
+          jump: parseFloat(r['Jump Fixed']) || null,
+          rds_source: String(r['Reloading Data Source (RDS)'] || ''),
+          rds_barrel_length: parseFloat(r['RDS Barrel Length (in)']) || null,
+          rds_velo_fixed: parseFloat(r['RDS VELO FIXED']) || null,
+          rds_velo_min: parseFloat(r['RDS Velo Min']) || null,
+          rds_velo_max: parseFloat(r['RDS Velo Max']) || null,
+          loaded_date: r['Loaded Date'] ? new Date(r['Loaded Date']).toISOString().slice(0,10) : null,
+          range_date: r['Range Date'] && r['Range Date'] !== 'NaT' ? new Date(r['Range Date']).toISOString().slice(0,10) : null,
+          shots,
+          bc_g1: null,
+          bullet_weight_gr: null,
+          notes: '',
+          created_at: new Date().toISOString(),
+        };
+        await dbPut('batches', batch);
+        bCount++;
+      }
+      addLog(`✓ Batches: ${bCount} imported, ${bSkip} skipped (already exist)`, 'ok');
+    }
+
+    addLog(`<strong>Import complete!</strong>`, 'ok');
+    result.innerHTML = `<div class="import-log">${log.join('')}</div>
+      <button class="btn btn-primary" style="margin-top:16px" onclick="navigate('dashboard')">Go to Dashboard</button>`;
+    toast('Import complete', 'success');
+
+  } catch (err) {
+    result.innerHTML = `<div class="import-log"><div class="err">Error: ${err.message}</div></div>`;
+    toast('Import failed', 'error');
+  }
+}
+
+// ── 404 ──
+register('404', () => {
+  setTitle('Not Found', true);
+  render(`<div class="empty-state"><div class="icon">🔍</div><h3>Page not found</h3></div>`);
+});
+
+// ── HASH ROUTING SHIM ──
+// We intercept navigate() calls internally — no hash needed
+// back-btn works via onclick handlers set per view
+
+// ════════════════════════════════════════════════════
+//  PATH ROUTER  (handles 'batch/ID', 'range-card/ID', etc.)
+// ════════════════════════════════════════════════════
+const origNavigate = navigate;
+window.navigate = function(path) {
+  const parts = path.split('/');
+  currentRoute = path;
+
+  // Match priority: exact path → two-segment key (e.g. 'batches/edit') → base segment
+  let handler, handlerId;
+  if (routes[path]) {
+    handler = routes[path];
+    handlerId = '';
+  } else if (parts.length >= 2 && routes[parts[0] + '/' + parts[1]]) {
+    handler = routes[parts[0] + '/' + parts[1]];
+    handlerId = parts.slice(2).join('/');
+  } else {
+    handler = routes[parts[0]];
+    handlerId = parts.slice(1).join('/');
+  }
+
+  if (handler) {
+    handler({ id: handlerId });
+  } else {
+    routes['404']({});
+  }
+  updateNav(parts[0]);
+};
+
+// ════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════
+openDB().then(() => {
+  navigate('dashboard');
+}).catch(err => {
+  document.getElementById('view').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Database error</h3><p>${err.message}</p></div>`;
+});
+</script>
+</body>
+</html>
