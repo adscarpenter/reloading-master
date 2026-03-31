@@ -716,12 +716,11 @@ function drawNavRifle() {
   img.onload = function() {
     canvas.width = 68; canvas.height = 14;
     ctx.drawImage(img, 0, 0, 68, 14);
-    if (active) {
-      ctx.globalCompositeOperation = 'source-in';
-      ctx.fillStyle = '#4fc3f7';
-      ctx.fillRect(0, 0, 68, 14);
-      ctx.globalCompositeOperation = 'source-over';
-    }
+    // Tint to match other nav icons: --muted (#4a6a80) inactive, --accent (#4fc3f7) active
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = active ? '#4fc3f7' : '#4a6a80';
+    ctx.fillRect(0, 0, 68, 14);
+    ctx.globalCompositeOperation = 'source-over';
   };
   img.src = RIFLE_NAV_B64;
 }
