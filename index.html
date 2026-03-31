@@ -1083,26 +1083,48 @@ register('inventory', async () => {
   render(types.map(t=>`
     <div class="section-title">${labels[t]}</div>
     ${grouped[t].length===0?`<p class="text-muted" style="font-size:14px;margin-bottom:12px;font-family:'Share Tech Mono',monospace">// NONE ON FILE</p>`:
-    grouped[t].map(c=>`<div class="inv-row">
-      <div class="inv-row-top">
-        <div class="inv-row-name">${c.name}</div>
-        ${mkBtnSm('EDIT','btn-secondary',`editComponent(${c.id})`,'')}
-        ${mkBtnSm('','btn-danger',`deleteComponent(${c.id})`,'')}
-      </div>
-      <div class="inv-row-meta">
-        <span class="qty-label">QTY</span>
-        <div class="stepper"><button onclick="adjustQty(${c.id},-1)">−</button><span class="step-val" id="qty-${c.id}">${c.quantity??0}</span><button onclick="adjustQty(${c.id},1)">+</button></div>
-        ${t==='case'?`<span class="qty-label" style="margin-left:8px">FIRES</span>
-          <div class="stepper"><button onclick="adjustFireCount(${c.id},-1)">−</button><span class="step-val" id="fc-${c.id}" style="color:${(c.fire_count||0)>=5?'var(--danger)':(c.fire_count||0)>=3?'var(--accent)':'var(--text)'}">${c.fire_count??0}</span><button onclick="adjustFireCount(${c.id},1)">+</button></div>
-          ${(c.fire_count||0)>=5?`<span class="fire-badge">${ICONS.warn} ANNEAL</span>`:(c.fire_count||0)>=3?`<span class="fire-badge" style="color:var(--accent);border-color:rgba(79,195,247,.3);background:rgba(79,195,247,.08)">${ICONS.warn} CHECK NECKS</span>`:''}` :''}
-      </div>
-      ${t==='bullet'&&(c.bc_g1||c.bullet_weight_gr)?`
-      <div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-        ${c.bullet_weight_gr?`<div><div class="rc-label">Weight</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--text)">${c.bullet_weight_gr} gr</div></div>`:''}
-        ${c.bc_g1?`<div><div class="rc-label">BC G1</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--accent)">${c.bc_g1}</div></div>`:''}
-        ${c.bc_g7?`<div><div class="rc-label">BC G7</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--accent)">${c.bc_g7}</div></div>`:''}
-      </div>`:''}
-    </div>`).join('')}`).join(''));
+    grouped[t].map(c=>{
+      const isPowder = c.type==='powder';
+      const grTotal     = c.powder_gr     || 0;
+      const grUsed      = c.powder_gr_used|| 0;
+      const grRemaining = Math.max(0, grTotal - grUsed);
+      const lbsRemaining= (grRemaining / 7000).toFixed(3);
+      const warnGr      = c.warn_gr || 1000;
+      const isLow       = isPowder && grRemaining < warnGr && grTotal > 0;
+      const pct         = grTotal > 0 ? Math.round(grRemaining / grTotal * 100) : 0;
+      return `<div class="inv-row" style="${isLow?'border-color:var(--accent)':''}">
+        <div class="inv-row-top">
+          <div class="inv-row-name">${c.name}${isPowder&&c.manufacturer?` <span style="font-size:12px;color:var(--muted2);font-family:'Share Tech Mono',monospace">// ${c.manufacturer}</span>`:''}${isPowder&&c.batch_num?` <span style="font-size:11px;color:var(--muted);font-family:'Share Tech Mono',monospace">LOT:${c.batch_num}</span>`:''}</div>
+          ${mkBtnSm('EDIT','btn-secondary',`editComponent(${c.id})`)}
+          ${mkBtnSm('','btn-danger',`deleteComponent(${c.id})`)}
+        </div>
+        ${isPowder?`
+        <div style="margin-top:10px">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+            <div><div class="rc-label">Remaining</div><div style="font-size:18px;font-weight:700;font-family:'Share Tech Mono',monospace;color:${isLow?'var(--accent)':'var(--success)'};margin-top:2px">${grRemaining.toLocaleString()}<span style="font-size:11px;color:var(--muted2);margin-left:3px">gr</span></div></div>
+            <div><div class="rc-label">Pounds Left</div><div style="font-size:18px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--text);margin-top:2px">${lbsRemaining}<span style="font-size:11px;color:var(--muted2);margin-left:3px">lb</span></div></div>
+            <div><div class="rc-label">Used</div><div style="font-size:18px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--muted2);margin-top:2px">${grUsed.toLocaleString()}<span style="font-size:11px;color:var(--muted);margin-left:3px">gr</span></div></div>
+          </div>
+          <div style="background:var(--surface2);border:1px solid var(--border);height:6px;overflow:hidden;margin-bottom:6px">
+            <div style="height:100%;width:${pct}%;background:${isLow?'var(--accent)':'var(--success)'};transition:width .3s"></div>
+          </div>
+          ${isLow?`<div class="fire-badge" style="color:var(--accent);border-color:rgba(79,195,247,.4);background:rgba(79,195,247,.08);margin-bottom:4px">${ICONS.warn} LOW STOCK — ${grRemaining.toLocaleString()} GR REMAINING</div>`:''}
+        </div>`:`
+        <div class="inv-row-meta">
+          <span class="qty-label">QTY</span>
+          <div class="stepper"><button onclick="adjustQty(${c.id},-1)">−</button><span class="step-val" id="qty-${c.id}">${c.quantity??0}</span><button onclick="adjustQty(${c.id},1)">+</button></div>
+          ${t==='case'?`<span class="qty-label" style="margin-left:8px">FIRES</span>
+            <div class="stepper"><button onclick="adjustFireCount(${c.id},-1)">−</button><span class="step-val" id="fc-${c.id}" style="color:${(c.fire_count||0)>=5?'var(--danger)':(c.fire_count||0)>=3?'var(--accent)':'var(--text)'}">${c.fire_count??0}</span><button onclick="adjustFireCount(${c.id},1)">+</button></div>
+            ${(c.fire_count||0)>=5?`<span class="fire-badge">${ICONS.warn} ANNEAL</span>`:(c.fire_count||0)>=3?`<span class="fire-badge" style="color:var(--accent);border-color:rgba(79,195,247,.3);background:rgba(79,195,247,.08)">${ICONS.warn} CHECK NECKS</span>`:''}` :''}
+        </div>`}
+        ${t==='bullet'&&(c.bc_g1||c.bullet_weight_gr)?`
+        <div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          ${c.bullet_weight_gr?`<div><div class="rc-label">Weight</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--text)">${c.bullet_weight_gr} gr</div></div>`:''}
+          ${c.bc_g1?`<div><div class="rc-label">BC G1</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--accent)">${c.bc_g1}</div></div>`:''}
+          ${c.bc_g7?`<div><div class="rc-label">BC G7</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--accent)">${c.bc_g7}</div></div>`:''}
+        </div>`:''}
+      </div>`;
+    }).join('')}`).join(''));
 });
 window.showAddComponent = () => {
   document.body.insertAdjacentHTML('beforeend',`
@@ -1115,30 +1137,80 @@ window.showAddComponent = () => {
           <div class="form-row"><div class="form-group"><label>Weight (gr)</label><input class="form-control" id="comp-weight" type="number" inputmode="decimal" step="0.1"></div><div class="form-group"><label>BC G1</label><input class="form-control" id="comp-bc-g1" type="number" inputmode="decimal" step="0.001"></div></div>
           <div class="form-row"><div class="form-group"><label>BC G7</label><input class="form-control" id="comp-bc-g7" type="number" inputmode="decimal" step="0.001"></div><div class="form-group"><label>Factory Max COAL</label><input class="form-control" id="comp-factory-coal" type="number" inputmode="decimal" step="0.001"></div></div>
         </div>
+        <div id="powder-fields" style="display:none">
+          <div class="form-row">
+            <div class="form-group"><label>Manufacturer</label><input class="form-control" id="comp-mfr" placeholder="e.g. Hodgdon"></div>
+            <div class="form-group"><label>Batch #</label><input class="form-control" id="comp-batch-num" placeholder="e.g. L24A123"></div>
+          </div>
+          <div class="form-group">
+            <label>Quantity (lbs)</label>
+            <input class="form-control" id="comp-powder-lbs" type="number" inputmode="decimal" step="0.25" placeholder="e.g. 1.0" oninput="updatePowderGrPreview()">
+            <div style="font-size:12px;color:var(--accent);margin-top:6px;font-family:'Share Tech Mono',monospace;letter-spacing:1px" id="comp-gr-preview">// 0 GR</div>
+          </div>
+          <div class="form-group">
+            <label>Low Stock Warning (gr)</label>
+            <input class="form-control" id="comp-warn-gr" type="number" inputmode="numeric" value="1000">
+          </div>
+        </div>
         <div id="case-fields" style="display:none"><div class="form-group"><label>Trim Length (in)</label><input class="form-control" id="comp-trim" type="number" inputmode="decimal" step="0.001"></div></div>
         ${mkBtn('ADD COMPONENT','btn-primary','saveComponent()','plus')}
       </div>
     </div>`);
 };
-window.toggleCompFields = t => { document.getElementById('bullet-fields').style.display=t==='bullet'?'':'none'; document.getElementById('case-fields').style.display=t==='case'?'':'none'; };
+window.toggleCompFields = t => {
+  document.getElementById('bullet-fields').style.display  = t==='bullet' ? '' : 'none';
+  document.getElementById('powder-fields').style.display  = t==='powder' ? '' : 'none';
+  document.getElementById('case-fields').style.display    = t==='case'   ? '' : 'none';
+};
+window.updatePowderGrPreview = () => {
+  const lbs = parseFloat(document.getElementById('comp-powder-lbs')?.value)||0;
+  const gr = Math.round(lbs * 7000);
+  const el = document.getElementById('comp-gr-preview');
+  if (el) el.textContent = '// ' + gr.toLocaleString() + ' GR';
+};
 window.saveComponent = async () => {
   const type=document.getElementById('comp-type').value, name=document.getElementById('comp-name').value.trim();
   if (!name){toast('NAME REQUIRED','error');return;}
   const obj={type,name,quantity:parseInt(document.getElementById('comp-qty').value)||0,notes:document.getElementById('comp-notes').value.trim(),fire_count:0};
   if (type==='bullet'){obj.bullet_weight_gr=parseFloat(document.getElementById('comp-weight').value)||null;obj.bc_g1=parseFloat(document.getElementById('comp-bc-g1').value)||null;obj.bc_g7=parseFloat(document.getElementById('comp-bc-g7').value)||null;obj.factory_coal=parseFloat(document.getElementById('comp-factory-coal').value)||null;}
   if (type==='case') obj.trim_length=parseFloat(document.getElementById('comp-trim').value)||null;
+  if (type==='powder') {
+    const lbs = parseFloat(document.getElementById('comp-powder-lbs').value)||0;
+    obj.powder_lbs       = lbs;
+    obj.powder_gr        = Math.round(lbs * 7000);
+    obj.powder_gr_used   = 0;
+    obj.manufacturer     = document.getElementById('comp-mfr').value.trim();
+    obj.batch_num        = document.getElementById('comp-batch-num').value.trim();
+    obj.warn_gr          = parseInt(document.getElementById('comp-warn-gr').value)||1000;
+    obj.quantity         = 0; // powder uses gr tracking not qty
+  }
   await dbPut('components',obj); document.getElementById('comp-overlay').remove(); toast('ADDED','success'); navigate('inventory');
 };
 window.editComponent = async (id) => {
   const c=await dbGet('components',id); if (!c) return;
+  const isPowder = c.type === 'powder';
+  const grRemaining = isPowder ? Math.max(0,(c.powder_gr||0)-(c.powder_gr_used||0)) : 0;
   document.body.insertAdjacentHTML('beforeend',`
     <div class="overlay" id="edit-comp-overlay" onclick="if(event.target===this)this.remove()">
       <div class="modal"><div class="modal-handle"></div><h3>Edit ${c.name}</h3>
         <div class="form-group"><label>Name</label><input class="form-control" id="ec-name" value="${c.name}"></div>
-        <div class="form-row"><div class="form-group"><label>Quantity</label><input class="form-control" id="ec-qty" type="number" value="${c.quantity??0}"></div>${c.type==='case'?`<div class="form-group"><label>Fire Count</label><input class="form-control" id="ec-fc" type="number" value="${c.fire_count??0}"></div>`:'<div></div>'}</div>
+        ${!isPowder?`<div class="form-row"><div class="form-group"><label>Quantity</label><input class="form-control" id="ec-qty" type="number" value="${c.quantity??0}"></div>${c.type==='case'?`<div class="form-group"><label>Fire Count</label><input class="form-control" id="ec-fc" type="number" value="${c.fire_count??0}"></div>`:'<div></div>'}</div>`:''}
         <div class="form-group"><label>Notes</label><input class="form-control" id="ec-notes" value="${c.notes||''}"></div>
         ${c.type==='bullet'?`<div class="divider"></div><div class="form-row"><div class="form-group"><label>Weight (gr)</label><input class="form-control" id="ec-weight" type="number" step="0.1" value="${c.bullet_weight_gr??''}"></div><div class="form-group"><label>BC G1</label><input class="form-control" id="ec-bc-g1" type="number" step="0.001" value="${c.bc_g1??''}"></div></div><div class="form-group"><label>BC G7</label><input class="form-control" id="ec-bc-g7" type="number" step="0.001" value="${c.bc_g7??''}"></div>`:''}
         ${c.type==='case'?`<div class="divider"></div><div class="form-group"><label>Trim Length (in)</label><input class="form-control" id="ec-trim" type="number" step="0.001" value="${c.trim_length??''}"></div>`:''}
+        ${isPowder?`<div class="divider"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Manufacturer</label><input class="form-control" id="ec-mfr" value="${c.manufacturer||''}"></div>
+            <div class="form-group"><label>Batch #</label><input class="form-control" id="ec-batch-num" value="${c.batch_num||''}"></div>
+          </div>
+          <div class="form-group">
+            <label>Quantity (lbs)</label>
+            <input class="form-control" id="ec-powder-lbs" type="number" inputmode="decimal" step="0.25" value="${c.powder_lbs||0}" oninput="updateEditPowderPreview()">
+            <div style="font-size:12px;color:var(--accent);margin-top:6px;font-family:'Share Tech Mono',monospace;letter-spacing:1px" id="ec-gr-preview">// ${(c.powder_gr||0).toLocaleString()} GR TOTAL · ${grRemaining.toLocaleString()} GR REMAINING</div>
+          </div>
+          <div class="form-group"><label>Low Stock Warning (gr)</label><input class="form-control" id="ec-warn-gr" type="number" value="${c.warn_gr||1000}"></div>
+          <div class="form-group"><label>Grains Used (auto-tracked)</label><input class="form-control" id="ec-gr-used" type="number" value="${c.powder_gr_used||0}" style="color:var(--muted2)"><div style="font-size:11px;color:var(--muted2);margin-top:4px;font-family:'Share Tech Mono',monospace">// Edit to manually correct if needed</div></div>
+        `:''}
         <div class="btn-group">
           ${mkBtn('SAVE','btn-primary',`saveEditComponent(${id})`,'save')}
           ${mkBtn('CANCEL','btn-secondary',"document.getElementById('edit-comp-overlay').remove()")}
@@ -1146,13 +1218,30 @@ window.editComponent = async (id) => {
       </div>
     </div>`);
 };
+window.updateEditPowderPreview = () => {
+  const lbs = parseFloat(document.getElementById('ec-powder-lbs')?.value)||0;
+  const grTotal = Math.round(lbs * 7000);
+  const grUsed = parseInt(document.getElementById('ec-gr-used')?.value)||0;
+  const remaining = Math.max(0, grTotal - grUsed);
+  const el = document.getElementById('ec-gr-preview');
+  if (el) el.textContent = '// ' + grTotal.toLocaleString() + ' GR TOTAL · ' + remaining.toLocaleString() + ' GR REMAINING';
+};
 window.saveEditComponent = async (id) => {
   const c=await dbGet('components',id);
   c.name=document.getElementById('ec-name').value.trim()||c.name;
-  c.quantity=parseInt(document.getElementById('ec-qty').value)||0;
   c.notes=document.getElementById('ec-notes').value.trim();
+  if (c.type!=='powder') c.quantity=parseInt(document.getElementById('ec-qty')?.value)||0;
   if (c.type==='case'){c.fire_count=parseInt(document.getElementById('ec-fc').value)||0;c.trim_length=parseFloat(document.getElementById('ec-trim').value)||null;}
   if (c.type==='bullet'){c.bullet_weight_gr=parseFloat(document.getElementById('ec-weight').value)||null;c.bc_g1=parseFloat(document.getElementById('ec-bc-g1').value)||null;c.bc_g7=parseFloat(document.getElementById('ec-bc-g7').value)||null;}
+  if (c.type==='powder'){
+    const lbs = parseFloat(document.getElementById('ec-powder-lbs').value)||0;
+    c.powder_lbs     = lbs;
+    c.powder_gr      = Math.round(lbs * 7000);
+    c.powder_gr_used = parseInt(document.getElementById('ec-gr-used').value)||0;
+    c.manufacturer   = document.getElementById('ec-mfr').value.trim();
+    c.batch_num      = document.getElementById('ec-batch-num').value.trim();
+    c.warn_gr        = parseInt(document.getElementById('ec-warn-gr').value)||1000;
+  }
   await dbPut('components',c); document.getElementById('edit-comp-overlay').remove(); toast('SAVED','success'); navigate('inventory');
 };
 window.adjustQty = async (id,delta) => { const c=await dbGet('components',id); c.quantity=Math.max(0,(c.quantity??0)+delta); await dbPut('components',c); const el=document.getElementById(`qty-${id}`); if(el) el.textContent=c.quantity; };
@@ -1546,9 +1635,32 @@ function renderLoadTable(batch) {
 window.toggleLoaded = async (batchId,idx,checked) => {
   const batch=await dbGet('batches',batchId);
   if (!batch.cartridges) batch.cartridges=generateCartridges(batch);
-  batch.cartridges[idx]=batch.cartridges[idx]||{}; batch.cartridges[idx].loaded=checked;
+  batch.cartridges[idx]=batch.cartridges[idx]||{};
+  const wasLoaded = batch.cartridges[idx].loaded || false;
+  batch.cartridges[idx].loaded=checked;
   await dbPut('batches',batch);
   const row=document.getElementById(`lt-row-${idx}`); if (row) row.className=checked?'lt-done-row':'';
+
+  // Deduct or restore powder when a round is checked/unchecked
+  if (batch.powder) {
+    const cartridges = generateCartridges(batch);
+    const c = cartridges[idx];
+    const chargeGr = c.charge ?? batch.charge_fixed ?? null;
+    if (chargeGr != null) {
+      const comps = await dbGetAll('components');
+      const powderComp = comps.find(p => p.type==='powder' && p.name===batch.powder);
+      if (powderComp && powderComp.powder_gr != null) {
+        const delta = checked ? chargeGr : -chargeGr;
+        powderComp.powder_gr_used = Math.max(0, (powderComp.powder_gr_used||0) + delta);
+        await dbPut('components', powderComp);
+        // Show feedback if low
+        const remaining = Math.max(0, (powderComp.powder_gr||0) - powderComp.powder_gr_used);
+        if (remaining < (powderComp.warn_gr||1000) && checked) {
+          toast(`${batch.powder}: ${remaining.toLocaleString()} GR REMAINING`, 'error');
+        }
+      }
+    }
+  }
 };
 window.saveCartridgeNote = async (batchId,idx,val) => {
   const batch=await dbGet('batches',batchId);
