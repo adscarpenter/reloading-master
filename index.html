@@ -1,0 +1,2113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>RELOAD // MASTER</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════
+   ROOT TOKENS
+═══════════════════════════════════════════ */
+:root {
+  --bg:        #080c12;
+  --surface:   #0d1520;
+  --surface2:  #121e2e;
+  --surface3:  #19293c;
+  --border:    #1e3248;
+  --border2:   #2a4460;
+  --accent:    #4fc3f7;
+  --accent2:   #7eb8d4;
+  --text:      #ddeeff;
+  --muted:     #4a6a80;
+  --muted2:    #8aaabb;
+  --success:   #4ecca3;
+  --danger:    #ff6b42;
+  --info:      #90caf9;
+  --nav-h:     68px;
+  --header-h:  58px;
+}
+
+/* ═══════════════════════════════════════════
+   RESET + BASE
+═══════════════════════════════════════════ */
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Barlow Condensed', -apple-system, sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════════════════════════════════
+   LAYOUT SHELL
+═══════════════════════════════════════════ */
+#app { display: flex; flex-direction: column; height: 100%; }
+
+/* ── Top bar ── */
+#top-bar {
+  height: var(--header-h);
+  background: var(--surface);
+  border-bottom: 2px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
+  position: sticky; top: 0; z-index: 100; flex-shrink: 0;
+}
+#top-bar h1 {
+  font-size: 19px; font-weight: 800; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--accent); flex: 1;
+  font-family: 'Barlow Condensed', sans-serif;
+}
+#top-bar .back-btn {
+  font-size: 26px; cursor: pointer; color: var(--muted2);
+  line-height: 1; padding: 4px 8px; flex-shrink: 0;
+}
+#top-bar .action-btn {
+  background: var(--accent); color: #000; border: none;
+  padding: 10px 18px; font-size: 12px; font-weight: 800;
+  letter-spacing: 2px; text-transform: uppercase; cursor: pointer;
+  font-family: 'Barlow Condensed', sans-serif;
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+#top-bar .action-btn svg { flex-shrink: 0; }
+
+/* ── Scroll view ── */
+#view { flex: 1; overflow-y: auto; padding: 14px 14px calc(var(--nav-h) + 16px); }
+
+/* ── Bottom nav ── */
+#bottom-nav {
+  height: var(--nav-h);
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+  display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3px; cursor: pointer; color: var(--muted);
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  border: none; background: none; border-right: 1px solid var(--border);
+  padding: 8px 4px; font-family: 'Barlow Condensed', sans-serif; transition: color .15s;
+}
+.nav-item:last-child { border-right: none; }
+.nav-item.active { color: var(--accent); background: rgba(79,195,247,.05); }
+.nav-top { width: 100%; height: 2px; background: currentColor; margin-bottom: 2px; opacity: 0; }
+.nav-item.active .nav-top { opacity: 1; }
+.nav-icon { display: flex; align-items: center; justify-content: center; height: 24px; }
+
+/* ═══════════════════════════════════════════
+   CARDS
+═══════════════════════════════════════════ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  margin-bottom: 10px; overflow: hidden;
+}
+.card-header {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.card-header .marker { width: 3px; height: 18px; background: var(--accent); flex-shrink: 0; }
+.card-header h3 {
+  font-size: 13px; font-weight: 800; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--text); flex: 1;
+}
+.card-header .hdr-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--muted2);
+  border: 1px solid var(--border); padding: 3px 8px;
+  font-family: 'Share Tech Mono', monospace;
+}
+.card-body { padding: 14px; }
+
+/* ═══════════════════════════════════════════
+   DATA GRID
+═══════════════════════════════════════════ */
+.data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.data-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.data-item label {
+  display: block; font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted2); margin-bottom: 4px;
+}
+.data-item .val { font-size: 18px; font-weight: 700; color: var(--text); }
+.data-item .val.big {
+  font-size: 26px; font-weight: 700; color: var(--accent);
+  font-family: 'Share Tech Mono', monospace;
+}
+.data-item .val.accent { color: var(--accent); }
+
+/* ═══════════════════════════════════════════
+   LIST ITEMS
+═══════════════════════════════════════════ */
+.list-item {
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 14px; margin-bottom: 8px; cursor: pointer;
+  display: flex; align-items: center; gap: 12px;
+  transition: border-color .15s;
+}
+.list-item:active { border-color: var(--accent); }
+.list-item .info { flex: 1; min-width: 0; }
+.list-item .info h4 {
+  font-size: 16px; font-weight: 700; letter-spacing: .5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.list-item .info p {
+  font-size: 12px; color: var(--muted2); margin-top: 3px;
+  font-family: 'Share Tech Mono', monospace;
+}
+.list-item .chevron { color: var(--border2); font-size: 22px; flex-shrink: 0; }
+.badge {
+  border: 1px solid var(--border); padding: 4px 9px;
+  font-size: 11px; font-weight: 700; color: var(--muted2); flex-shrink: 0;
+  font-family: 'Share Tech Mono', monospace; letter-spacing: 1px;
+}
+.badge-val { background: var(--accent); color: #000; border-color: var(--accent); }
+.badge-ladder { background: rgba(79,195,247,.1); color: var(--accent); border-color: var(--border2); }
+.badge-grouped { background: rgba(78,204,163,.1); color: var(--success); border-color: var(--success); }
+
+/* ═══════════════════════════════════════════
+   FORMS
+═══════════════════════════════════════════ */
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block; font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted2); margin-bottom: 6px;
+}
+.form-control {
+  width: 100%; background: var(--surface2);
+  border: 1px solid var(--border); border-left: 3px solid var(--border2);
+  color: var(--text); padding: 12px 13px; font-size: 17px; font-weight: 600;
+  outline: none; font-family: 'Barlow Condensed', sans-serif;
+  -webkit-appearance: none; appearance: none; transition: border-color .15s;
+}
+.form-control:focus { border-left-color: var(--accent); border-color: var(--border2); }
+select.form-control {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238aaabb' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
+}
+textarea.form-control { min-height: 80px; resize: vertical; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ═══════════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 13px 20px; font-size: 13px; font-weight: 800; cursor: pointer; border: none;
+  width: 100%; letter-spacing: 2px; text-transform: uppercase;
+  font-family: 'Barlow Condensed', sans-serif; transition: opacity .15s;
+}
+.btn:active { opacity: .8; }
+.btn svg { flex-shrink: 0; }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border2); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-sm { padding: 9px 14px; font-size: 12px; width: auto; }
+.btn-group { display: flex; gap: 8px; }
+
+/* ═══════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════ */
+.tabs {
+  display: flex; border-bottom: 2px solid var(--border);
+  margin-bottom: 14px; overflow-x: auto; scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab-btn {
+  padding: 11px 16px; font-size: 12px; font-weight: 800; color: var(--muted2);
+  background: none; border: none; border-bottom: 3px solid transparent;
+  cursor: pointer; white-space: nowrap; letter-spacing: 1.5px; text-transform: uppercase;
+  font-family: 'Barlow Condensed', sans-serif; margin-bottom: -2px; flex-shrink: 0;
+}
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ═══════════════════════════════════════════
+   STAT BOXES
+═══════════════════════════════════════════ */
+.stat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.stat-box {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-top: 3px solid var(--border2); padding: 10px 6px; text-align: center;
+}
+.stat-box.hi { border-top-color: var(--accent); }
+.s-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--muted2);
+}
+.s-val {
+  font-size: 20px; font-weight: 700; color: var(--accent);
+  font-family: 'Share Tech Mono', monospace; margin-top: 4px;
+}
+.s-unit { font-size: 9px; color: var(--muted); letter-spacing: 1px; margin-top: 1px; }
+
+/* ═══════════════════════════════════════════
+   DIVIDERS + SECTION TITLES
+═══════════════════════════════════════════ */
+.divider { height: 1px; background: var(--border); margin: 14px 0; }
+.section-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--muted2); margin: 18px 0 10px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.rule { height: 1px; background: var(--border); margin: 12px 0; position: relative; }
+.rule-label {
+  position: absolute; top: 50%; left: 0; transform: translateY(-50%);
+  background: var(--surface); padding-right: 10px;
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+}
+
+/* ═══════════════════════════════════════════
+   EMPTY STATES
+═══════════════════════════════════════════ */
+.empty-state { text-align: center; padding: 48px 24px; color: var(--muted); }
+.empty-icon { margin-bottom: 16px; display: flex; align-items: center; justify-content: center; }
+.empty-state h3 {
+  font-size: 18px; font-weight: 800; color: var(--text);
+  margin-bottom: 8px; letter-spacing: 1px; text-transform: uppercase;
+}
+.empty-state p { font-size: 15px; line-height: 1.5; }
+
+/* ═══════════════════════════════════════════
+   MISC HELPERS
+═══════════════════════════════════════════ */
+.text-muted { color: var(--muted2); }
+.text-accent { color: var(--accent); }
+.text-danger { color: var(--danger); }
+.text-success { color: var(--success); }
+.mono { font-family: 'Share Tech Mono', monospace; }
+
+/* ═══════════════════════════════════════════
+   OVERLAY / MODAL
+═══════════════════════════════════════════ */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.82);
+  z-index: 200; display: flex; align-items: flex-end;
+}
+.modal {
+  background: var(--surface); border-top: 2px solid var(--border2);
+  width: 100%; max-height: 92vh; overflow-y: auto; padding: 20px 16px 32px;
+}
+.modal-handle { width: 40px; height: 3px; background: var(--border2); margin: 0 auto 20px; }
+.modal h3 {
+  font-size: 20px; font-weight: 800; letter-spacing: 1px;
+  text-transform: uppercase; margin-bottom: 20px; color: var(--text);
+}
+
+/* ═══════════════════════════════════════════
+   INVENTORY
+═══════════════════════════════════════════ */
+.inv-row { background: var(--surface); border: 1px solid var(--border); padding: 12px 14px; margin-bottom: 8px; }
+.inv-row-top { display: flex; align-items: center; gap: 10px; }
+.inv-row-name { flex: 1; font-size: 16px; font-weight: 700; }
+.inv-row-meta { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.qty-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted2); }
+.stepper { display: flex; align-items: center; background: var(--surface2); border: 1px solid var(--border2); overflow: hidden; }
+.stepper button { background: none; border: none; color: var(--text); font-size: 20px; font-weight: 700; padding: 6px 14px; cursor: pointer; line-height: 1; }
+.stepper button:active { background: var(--border); }
+.stepper .step-val { min-width: 44px; text-align: center; font-size: 15px; font-weight: 700; font-family: 'Share Tech Mono', monospace; }
+.fire-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,107,66,.1); border: 1px solid rgba(255,107,66,.3);
+  padding: 4px 10px; font-size: 12px; font-weight: 700; color: var(--danger); letter-spacing: 1px;
+}
+
+/* ═══════════════════════════════════════════
+   LOAD BENCH TABLE
+═══════════════════════════════════════════ */
+.load-bench-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.load-bench-table thead th {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted2); padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border);
+}
+.load-bench-table tbody td { padding: 12px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.load-bench-table tbody tr:last-child td { border-bottom: none; }
+.lt-done { width: 44px; padding-left: 12px !important; }
+.lt-num { width: 36px; font-weight: 700; color: var(--muted2); font-family: 'Share Tech Mono', monospace; }
+.lt-charge { font-family: 'Share Tech Mono', monospace; font-weight: 700; font-size: 16px; color: var(--accent); }
+.lt-done-row td { opacity: .38; }
+.lt-checkbox { display: flex; align-items: center; cursor: pointer; }
+.lt-checkbox input { display: none; }
+.lt-checkmark {
+  width: 26px; height: 26px; border: 2px solid var(--border2);
+  display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0;
+}
+.lt-checkbox input:checked + .lt-checkmark { background: var(--success); border-color: var(--success); }
+.lt-checkbox input:checked + .lt-checkmark::after { content: '✓'; color: #000; font-size: 14px; font-weight: 900; }
+.lt-note-input {
+  background: none; border: none; color: var(--muted2); font-size: 13px;
+  width: 100%; outline: none; padding: 0; font-family: 'Barlow Condensed', sans-serif;
+}
+.lt-note-input:focus { color: var(--text); border-bottom: 1px solid var(--accent); }
+
+/* ── Group header rows in bench table ── */
+.group-header-row td {
+  background: rgba(79,195,247,.06); border-top: 2px solid var(--accent);
+  padding: 6px 10px !important;
+}
+.group-header-label { font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); }
+.group-header-params { font-size: 11px; color: var(--muted2); font-family: 'Share Tech Mono', monospace; margin-top: 1px; }
+
+/* ═══════════════════════════════════════════
+   SHOT / DROP TABLES
+═══════════════════════════════════════════ */
+.shot-table { width: 100%; border-collapse: collapse; }
+.shot-table th {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted2); padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border);
+}
+.shot-table td { padding: 10px 10px; font-size: 15px; border-bottom: 1px solid var(--border); font-family: 'Share Tech Mono', monospace; }
+.shot-table tr:last-child td { border-bottom: none; }
+.delta-pos { color: var(--success); }
+.delta-neg { color: var(--danger); }
+
+.drop-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.drop-table th { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted2); padding: 8px 10px; text-align: right; border-bottom: 2px solid var(--border); }
+.drop-table th:first-child { text-align: left; }
+.drop-table td { padding: 10px 10px; border-bottom: 1px solid var(--border); text-align: right; font-family: 'Share Tech Mono', monospace; }
+.drop-table td:first-child { text-align: left; font-weight: 700; color: var(--accent); }
+.drop-table tr:last-child td { border-bottom: none; }
+.drop-table .zero-row td { background: rgba(79,195,247,.05); }
+
+/* ═══════════════════════════════════════════
+   RANGE CARD
+═══════════════════════════════════════════ */
+.rc-session-header { background: var(--accent); color: #000; padding: 14px 16px; }
+.rc-session-header h2 { font-size: 16px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; }
+.rc-session-header .rc-meta { font-size: 11px; font-weight: 700; opacity: .7; margin-top: 3px; letter-spacing: 1px; }
+
+.rc-recipe-strip { display: grid; grid-template-columns: repeat(3,1fr); border-bottom: 1px solid var(--border); }
+.rc-recipe-strip > div { padding: 10px 14px; border-right: 1px solid var(--border); }
+.rc-recipe-strip > div:last-child { border-right: none; }
+.rc-label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted2); }
+.rc-val { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 2px; font-family: 'Share Tech Mono', monospace; }
+
+.rc-rds-bar { padding: 8px 14px; border-bottom: 1px solid var(--border); background: rgba(79,195,247,.04); }
+
+.rc-env-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 0; border-bottom: 1px solid var(--border); }
+.rc-env-cell { padding: 10px 12px; border-right: 1px solid var(--border); }
+.rc-env-cell:last-child { border-right: none; }
+.rc-env-cell label { display: block; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted2); margin-bottom: 5px; }
+.rc-env-cell input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  border-bottom: 2px solid var(--border2); color: var(--text); padding: 6px 8px;
+  font-size: 15px; font-family: 'Share Tech Mono', monospace; outline: none; text-align: center;
+}
+.rc-env-cell input:focus { border-bottom-color: var(--accent); }
+
+.rc-import-bar {
+  display: flex; gap: 8px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); background: var(--surface2);
+  align-items: center;
+}
+
+.rc-live-stats {
+  position: sticky; top: var(--header-h); z-index: 50;
+  background: var(--surface); border-bottom: 2px solid var(--border);
+  padding: 10px 14px;
+}
+
+.rc-group-header {
+  background: rgba(79,195,247,.08); border-top: 2px solid var(--accent);
+  border-bottom: 1px solid var(--border); padding: 8px 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.rc-group-title { font-size: 12px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); }
+.rc-group-params { font-size: 12px; color: var(--muted2); font-family: 'Share Tech Mono', monospace; }
+
+.rc-shot-row {
+  display: grid; grid-template-columns: 44px 1fr 110px;
+  gap: 10px; align-items: center; padding: 13px 14px;
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.rc-shot-row:active { background: rgba(79,195,247,.04); }
+.rc-shot-row.has-velo { background: rgba(78,204,163,.04); }
+.rc-shot-num {
+  width: 40px; height: 40px; border: 1.5px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; color: var(--muted2); flex-shrink: 0;
+  font-family: 'Share Tech Mono', monospace;
+}
+.rc-shot-num.fired { border-color: var(--accent); color: var(--accent); background: rgba(79,195,247,.1); }
+.rc-shot-info { min-width: 0; }
+.rc-shot-charge { font-size: 18px; font-weight: 700; color: var(--accent); font-family: 'Share Tech Mono', monospace; }
+.rc-shot-sub { font-size: 12px; color: var(--muted2); margin-top: 3px; font-family: 'Share Tech Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-shot-right { text-align: right; }
+.rc-velo-display { font-size: 20px; font-weight: 700; color: var(--muted); font-family: 'Share Tech Mono', monospace; }
+.rc-velo-display.has-val { color: var(--success); }
+.rc-velo-unit { font-size: 9px; color: var(--muted); letter-spacing: 1px; margin-top: 2px; }
+.rc-tap-hint { font-size: 9px; color: var(--border2); margin-top: 3px; letter-spacing: 1px; }
+.rc-commit-bar { padding: 14px 16px; background: var(--surface); border-top: 2px solid var(--border); }
+
+/* ═══════════════════════════════════════════
+   SHOT DETAIL OVERLAY
+═══════════════════════════════════════════ */
+.shot-detail-overlay {
+  position: fixed; inset: 0; background: var(--bg);
+  z-index: 250; display: flex; flex-direction: column; overflow: hidden;
+}
+.shot-detail-header {
+  background: var(--surface); border-bottom: 2px solid var(--border);
+  padding: 0 16px; height: var(--header-h);
+  display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+}
+.shot-detail-header .close-btn { font-size: 22px; cursor: pointer; color: var(--muted2); padding: 4px 8px; }
+.shot-detail-header .det-title { flex: 1; font-size: 18px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+.shot-detail-header .nav-arrow { font-size: 28px; cursor: pointer; color: var(--accent); padding: 4px 10px; font-weight: 700; user-select: none; }
+.shot-detail-header .nav-arrow.disabled { color: var(--border2); pointer-events: none; }
+.shot-detail-body { flex: 1; overflow-y: auto; padding: 14px; }
+.shot-detail-footer { background: var(--surface); border-top: 2px solid var(--border); padding: 12px 16px; flex-shrink: 0; }
+
+.det-section { background: var(--surface); border: 1px solid var(--border); margin-bottom: 10px; }
+.det-section-head {
+  background: rgba(79,195,247,.06); border-bottom: 1px solid var(--border);
+  padding: 9px 14px; font-size: 11px; font-weight: 800; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--accent);
+  display: flex; align-items: center; gap: 8px;
+}
+.det-section-head::before { content: ''; width: 3px; height: 14px; background: var(--accent); flex-shrink: 0; }
+.det-row { display: flex; align-items: center; padding: 13px 14px; border-bottom: 1px solid var(--border); }
+.det-row:last-child { border-bottom: none; }
+.det-row-label { flex: 1; font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted2); }
+.det-row-val { font-size: 22px; font-weight: 700; font-family: 'Share Tech Mono', monospace; color: var(--text); }
+.det-row-val.accent { color: var(--accent); }
+.det-row-val.success { color: var(--success); }
+.det-row-val.danger { color: var(--danger); }
+.det-row-val.info { color: var(--info); }
+.det-unit { font-size: 12px; color: var(--muted2); margin-left: 4px; font-weight: 600; }
+
+.det-velo-wrap {
+  background: var(--surface); border: 2px solid var(--border2);
+  padding: 24px 16px; text-align: center; margin-bottom: 12px; transition: border-color .2s;
+}
+.det-velo-wrap.active { border-color: var(--accent); }
+.det-velo-wrap.filled { border-color: var(--success); }
+.det-velo-label { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--muted2); margin-bottom: 10px; }
+.det-velo-input {
+  background: none; border: none; outline: none;
+  font-size: 58px; font-weight: 700; font-family: 'Share Tech Mono', monospace;
+  color: var(--text); width: 100%; text-align: center;
+}
+.det-velo-input::placeholder { color: var(--border2); }
+.det-velo-input.filled { color: var(--success); }
+.det-velo-fps { font-size: 14px; font-weight: 700; color: var(--muted2); margin-top: 4px; letter-spacing: 3px; }
+
+.det-notes-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--border2); padding: 14px; margin-bottom: 12px;
+}
+.det-notes-label { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--muted2); margin-bottom: 8px; }
+.det-notes-input {
+  background: none; border: none; outline: none; color: var(--text);
+  font-size: 16px; width: 100%; resize: none; font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 500; min-height: 80px; line-height: 1.5;
+}
+.det-notes-input::placeholder { color: var(--border2); }
+
+/* ═══════════════════════════════════════════
+   ENV / DROP INPUTS
+═══════════════════════════════════════════ */
+.env-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-bottom: 14px; }
+.env-strip label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted2); display: block; margin-bottom: 4px; }
+.env-strip input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  border-left: 3px solid var(--border2); color: var(--text); padding: 8px 10px;
+  font-size: 15px; outline: none; text-align: center; font-family: 'Share Tech Mono', monospace;
+}
+.env-strip input:focus { border-left-color: var(--accent); }
+
+/* ═══════════════════════════════════════════
+   IMPORT / EXPORT
+═══════════════════════════════════════════ */
+.drop-zone {
+  border: 2px dashed var(--border2); padding: 32px 16px;
+  text-align: center; cursor: pointer; transition: border-color .15s;
+}
+.drop-zone.over { border-color: var(--accent); background: rgba(79,195,247,.04); }
+.drop-zone p { font-size: 15px; color: var(--muted2); margin-top: 8px; }
+.import-log {
+  background: var(--surface2); border: 1px solid var(--border); padding: 12px;
+  font-size: 13px; font-family: 'Share Tech Mono', monospace;
+  max-height: 200px; overflow-y: auto; color: var(--muted2);
+}
+.import-log .ok { color: var(--success); }
+.import-log .err { color: var(--danger); }
+
+/* ═══════════════════════════════════════════
+   BATCH FORM — GROUP CONFIG
+═══════════════════════════════════════════ */
+.manual-group-row {
+  background: var(--surface2); border: 1px solid var(--border);
+  padding: 12px; margin-bottom: 8px; position: relative;
+}
+.manual-group-row .del-grp { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--danger); font-size: 18px; cursor: pointer; }
+
+/* ═══════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════ */
+#toast {
+  position: fixed; bottom: calc(var(--nav-h) + 16px); left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--surface); border: 2px solid var(--border2);
+  padding: 13px 22px; font-size: 13px; font-weight: 800; letter-spacing: 1.5px;
+  text-transform: uppercase; z-index: 300; opacity: 0; transition: all .25s;
+  pointer-events: none; white-space: nowrap; font-family: 'Barlow Condensed', sans-serif;
+  color: var(--text);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.success { border-color: var(--success); color: var(--success); }
+#toast.error { border-color: var(--danger); color: var(--danger); }
+
+/* ═══════════════════════════════════════════
+   PRINT
+═══════════════════════════════════════════ */
+@media print {
+  #bottom-nav, #top-bar .action-btn, .tabs, .btn, .back-btn { display: none !important; }
+  #view { padding: 0; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── TOP BAR ── -->
+  <div id="top-bar">
+    <span class="back-btn" id="back-btn" style="display:none">&#8592;</span>
+    <h1 id="app-title">RELOAD // MASTER</h1>
+    <span id="top-action"></span>
+  </div>
+
+  <!-- ── MAIN VIEW ── -->
+  <div id="view"></div>
+
+  <!-- ── BOTTOM NAV ── -->
+  <nav id="bottom-nav">
+
+    <button class="nav-item active" data-route="dashboard">
+      <div class="nav-top"></div>
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+          <rect x="3" y="3" width="8" height="8"/>
+          <rect x="13" y="3" width="8" height="8"/>
+          <rect x="3" y="13" width="8" height="8"/>
+          <rect x="13" y="13" width="8" height="8"/>
+          <line x1="11" y1="7" x2="13" y2="7"/>
+          <line x1="11" y1="17" x2="13" y2="17"/>
+          <line x1="7" y1="11" x2="7" y2="13"/>
+          <line x1="17" y1="11" x2="17" y2="13"/>
+        </svg>
+      </div>
+      DASH
+    </button>
+
+    <button class="nav-item" data-route="firearms">
+      <div class="nav-top"></div>
+      <div class="nav-icon">
+        <canvas id="nav-rifle-canvas" width="28" height="14" style="width:28px;height:14px;image-rendering:pixelated;image-rendering:crisp-edges"></canvas>
+      </div>
+      ARMS
+    </button>
+
+    <button class="nav-item" data-route="inventory">
+      <div class="nav-top"></div>
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+          <rect x="3" y="10" width="18" height="11"/>
+          <polyline points="3,10 3,6 21,6 21,10"/>
+          <line x1="9" y1="6" x2="9" y2="3"/>
+          <line x1="15" y1="6" x2="15" y2="3"/>
+          <line x1="9" y1="3" x2="15" y2="3"/>
+          <line x1="8" y1="15" x2="16" y2="15"/>
+        </svg>
+      </div>
+      INV
+    </button>
+
+    <button class="nav-item" data-route="batches">
+      <div class="nav-top"></div>
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+          <polygon points="5,2 16,2 19,5 19,22 5,22"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="16" y1="6" x2="19" y2="6"/>
+          <line x1="8" y1="10" x2="16" y2="10"/>
+          <line x1="8" y1="13" x2="16" y2="13"/>
+          <line x1="8" y1="16" x2="13" y2="16"/>
+        </svg>
+      </div>
+      BATCH
+    </button>
+
+    <button class="nav-item" data-route="import">
+      <div class="nav-top"></div>
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+          <polyline points="8,10 12,4 16,10"/>
+          <line x1="12" y1="4" x2="12" y2="18"/>
+          <line x1="5" y1="20" x2="19" y2="20"/>
+          <line x1="5" y1="17" x2="5" y2="20"/>
+          <line x1="19" y1="17" x2="19" y2="20"/>
+        </svg>
+      </div>
+      SYNC
+    </button>
+
+  </nav>
+</div>
+
+<!-- ── TOAST ── -->
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════════════════
+     INLINE SVG ICON HELPERS (used by JS render fns)
+     Accessed via ICONS.xxx
+══════════════════════════════════════════════════ -->
+<script>
+const RIFLE_NAV_B64   = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEQAAAAOCAYAAACW0Lq4AAAAiElEQVR42u2WwQrAIAxDG9n///LbaeBEPWxrVWbuRRJfaGWOAngzL0kWrDRrGKOUbOtOpfcDJSlXDQDyStSIiq4MgHZlGoQ8MVD7wRWCaJEHoK82QXQQXnU6/loNt0BWJSE8kLJKI46s0DukNKhMM1ycIYS0jPW2zUphmJl1t8xqZlwI+WMIuU4uc0A1SeeCEQAAAABJRU5ErkJggg==';
+const RIFLE_LARGE_B64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAApCAYAAABwQGa5AAABQklEQVR42u3cyw7CIBBGYTF9/1ceN7rwEgqVtlC+szQ1Kv0PM2BKumFXIiI+X0spJSMzBm7USpiHu6Hka8rdEFxHDhAEIAi0VwQBCAIQBCAIQBAAb9j1WGHt/5HSnaOIiJpdplafC4KcKggIQgZYg5CDHCAIOdCuxeotOC0WpmRAadYiItJoIdoqCTHGnthOryAjBahma1U85w13C5YrBokYaDZBjBymz9mNGCoIQUCOA7HNC3IQBCAIVI/mLIZA+EEQwQVBWobViYiYSpBXuEuDn7seFulTtC/pidYH01WQnBS1j78SRQXpOuglM31tmEtbJy3W5OvRnkPwK+i577rlUITce0quwcUF6UmOf2b+LSEu+e3kIEj0LkUu2Hs9ZUgMnNJiCR5GYiEEcKAghABBSAGCEAIoOtWEEFBBSAF88QD8BqCOs/O7cwAAAABJRU5ErkJggg==';
+
+function drawNavRifle() {
+  const canvas = document.getElementById('nav-rifle-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const navBtn = document.querySelector('[data-route="firearms"]');
+  const active = navBtn && navBtn.classList.contains('active');
+  const img = new Image();
+  img.onload = function() {
+    canvas.width = 68; canvas.height = 14;
+    ctx.drawImage(img, 0, 0, 68, 14);
+    if (active) {
+      ctx.globalCompositeOperation = 'source-in';
+      ctx.fillStyle = '#4fc3f7';
+      ctx.fillRect(0, 0, 68, 14);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  };
+  img.src = RIFLE_NAV_B64;
+}
+
+function drawRifleOnCanvas(canvas, w, h) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const img = new Image();
+  img.onload = function() {
+    const scale = Math.min(w / 68, h / 14);
+    const dw = Math.round(68 * scale);
+    const dh = Math.round(14 * scale);
+    const ox = Math.floor((w - dw) / 2);
+    const oy = Math.floor((h - dh) / 2);
+    ctx.drawImage(img, ox, oy, dw, dh);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#4fc3f7';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+  };
+  img.src = RIFLE_LARGE_B64;
+}
+</script>
+
+<script>
+// ════════════════════════════════════════════════════
+//  DATABASE
+// ════════════════════════════════════════════════════
+const DB_NAME = 'ReloadingMasterV3', DB_VER = 1;
+let db;
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      ['firearms','components','batches'].forEach(s => {
+        if (!d.objectStoreNames.contains(s))
+          d.createObjectStore(s, s === 'batches' ? { keyPath: 'id' } : { keyPath: 'id', autoIncrement: true });
+      });
+    };
+    req.onsuccess = e => { db = e.target.result; res(db); };
+    req.onerror = () => rej(req.error);
+  });
+}
+const dbGetAll = s => new Promise((r,j) => { const q=db.transaction(s).objectStore(s).getAll(); q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
+const dbGet   = (s,id) => new Promise((r,j) => { const q=db.transaction(s).objectStore(s).get(id); q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
+const dbPut   = (s,o) => new Promise((r,j) => { const q=db.transaction(s,'readwrite').objectStore(s).put(o); q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
+const dbDelete= (s,id) => new Promise((r,j) => { const q=db.transaction(s,'readwrite').objectStore(s).delete(id); q.onsuccess=()=>r(); q.onerror=()=>j(q.error); });
+
+// ════════════════════════════════════════════════════
+//  ROUTER
+// ════════════════════════════════════════════════════
+const routes = {};
+let currentRoute = '';
+function register(path, fn) { routes[path] = fn; }
+function updateNav(path) {
+  const base = path.split('/')[0];
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.route === base));
+  setTimeout(drawNavRifle, 10);
+}
+document.getElementById('bottom-nav').addEventListener('click', e => {
+  const btn = e.target.closest('.nav-item');
+  if (btn) navigate(btn.dataset.route);
+});
+window.navigate = function(path) {
+  currentRoute = path;
+  const parts = path.split('/');
+  let handler, handlerId;
+  if (routes[path]) { handler = routes[path]; handlerId = ''; }
+  else if (parts.length >= 2 && routes[parts[0]+'/'+parts[1]]) { handler = routes[parts[0]+'/'+parts[1]]; handlerId = parts.slice(2).join('/'); }
+  else { handler = routes[parts[0]]; handlerId = parts.slice(1).join('/'); }
+  if (handler) handler({ id: handlerId });
+  else routes['404']({});
+  updateNav(parts[0]);
+};
+
+// ════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════
+function render(html) { document.getElementById('view').innerHTML = html; }
+function setTitle(title, showBack=false, action='') {
+  document.getElementById('app-title').textContent = title;
+  document.getElementById('back-btn').style.display = showBack ? '' : 'none';
+  document.getElementById('top-action').innerHTML = action;
+}
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `show ${type}`;
+  clearTimeout(el._t); el._t = setTimeout(() => el.className='', 2800);
+}
+const confirm_ = msg => window.confirm(msg);
+const fmt = (n,d=1) => (n==null||isNaN(n)) ? '—' : Number(n).toFixed(d);
+function fmtDate(d) {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); } catch { return d; }
+}
+function calcStats(velos) {
+  const v = velos.filter(x => x>0 && !isNaN(x));
+  if (!v.length) return { avg:0, sd:0, es:0, n:0 };
+  const avg = v.reduce((a,b)=>a+b,0)/v.length;
+  const sd  = Math.sqrt(v.reduce((s,x)=>s+(x-avg)**2,0)/v.length);
+  return { avg, sd, es: Math.max(...v)-Math.min(...v), n: v.length };
+}
+function genBatchId(firearmId, bullet, loadType, suffix) {
+  const b = bullet.replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,10);
+  const f = (firearmId||'UNKN').replace(/\s+/g,'');
+  const tc = loadType==='Charge Ladder'?'CHG':loadType==='Seating Ladder'?'SEAT':loadType==='Jump Ladder'?'JUMP':loadType==='Grouped'?'GRP':'VAL';
+  return `${f}-${b}-${tc}${suffix?'-'+suffix:''}`;
+}
+
+// ── Reusable button HTML ──
+const mkBtn = (label, cls, onclick, icon='') =>
+  `<button class="btn ${cls}" onclick="${onclick}">${icon?ICONS[icon]+' ':''}${label}</button>`;
+const mkBtnSm = (label, cls, onclick, icon='') =>
+  `<button class="btn btn-sm ${cls}" onclick="${onclick}">${icon?ICONS[icon]+' ':''}${label}</button>`;
+
+// ════════════════════════════════════════════════════
+//  BALLISTICS ENGINE
+// ════════════════════════════════════════════════════
+const G1_TABLE = [[0,.2629],[.05,.2558],[.1,.2487],[.15,.2413],[.2,.2336],[.25,.2254],[.3,.2167],[.35,.2076],[.4,.198],[.45,.1882],[.5,.1782],[.55,.168],[.6,.1579],[.65,.1477],[.7,.1373],[.75,.1267],[.8,.116],[.85,.1053],[.9,.1011],[.95,.0979],[1,.1162],[1.05,.1452],[1.1,.1481],[1.15,.1495],[1.2,.1504],[1.25,.1514],[1.3,.1522],[1.35,.153],[1.4,.1537],[1.45,.1545],[1.5,.1551],[1.6,.1565],[1.7,.1579],[1.8,.1594],[1.9,.1607],[2,.1621],[2.5,.1686],[3,.1752],[4,.19],[5,.2049]];
+function g1Cd(m) {
+  if (m<=G1_TABLE[0][0]) return G1_TABLE[0][1];
+  if (m>=G1_TABLE[G1_TABLE.length-1][0]) return G1_TABLE[G1_TABLE.length-1][1];
+  for (let i=1;i<G1_TABLE.length;i++) if (m<=G1_TABLE[i][0]) { const t=(m-G1_TABLE[i-1][0])/(G1_TABLE[i][0]-G1_TABLE[i-1][0]); return G1_TABLE[i-1][1]+t*(G1_TABLE[i][1]-G1_TABLE[i-1][1]); }
+  return .2;
+}
+function computeDropTable(mv,bc,wt,tempF=59,altFt=0,hum=50,zero=100,maxYds=1000) {
+  if (!mv||!bc||!wt||mv<=0||bc<=0) return null;
+  const Tr=tempF+459.67, Cs=49.0223*Math.sqrt(Tr);
+  const P=29.921*Math.pow(1-6.87535e-6*altFt,5.2561);
+  const svp=Math.exp(17.625*(tempF-32)*5/9/(243.04+(tempF-32)*5/9))*0.2953;
+  const rho=0.002378*(P/29.921)*(518.67/Tr)*(1-0.00378*(hum/100)*svp/P);
+  const BC_s=bc*4.477, dt=0.0005, g=32.174;
+  let vx=mv,vy=0,x=0,y=0,t=0,zeroY=null,zeroHit=false;
+  const checkYds=[],results=[];
+  for (let r=100;r<=maxYds;r+=100) checkYds.push(r);
+  let nc=0;
+  while (x<maxYds*3&&t<5&&nc<checkYds.length) {
+    const v=Math.sqrt(vx*vx+vy*vy),mach=v/Cs,drag=rho*g1Cd(mach)*v*v/(2*BC_s);
+    vx+=(-drag*(vx/v))*dt; vy+=(-drag*(vy/v)-g)*dt; x+=vx*dt; y+=vy*dt; t+=dt;
+    if (!zeroHit&&x/3>=zero){zeroY=y;zeroHit=true;}
+    if (nc<checkYds.length&&x/3>=checkYds[nc]) {
+      results.push({range:checkYds[nc],velocity:Math.round(v),drop_in:y*12,tof:t,energy:Math.round(.5*(wt/7000/32.174)*v*v*.0311)});
+      nc++;
+    }
+  }
+  if (zeroY!==null) {
+    const zi=results.findIndex(r=>r.range>=zero);
+    if (zi>=0) { const zd=results[zi].drop_in; results.forEach(r=>{r.drop_from_zero=r.drop_in-zd;r.moa=r.range>0?r.drop_from_zero/r.range*100/1.047:0;}); }
+  }
+  return results;
+}
+
+// ════════════════════════════════════════════════════
+//  GARMIN CSV PARSER
+// ════════════════════════════════════════════════════
+function parseGarminCSV(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  const shots = [];
+  for (const line of lines) {
+    const cols = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+    const n = parseInt(cols[0]);
+    const fps = parseFloat(cols[1]);
+    if (!isNaN(n) && n > 0 && n < 1000 && !isNaN(fps) && fps > 100 && fps < 6000) {
+      shots.push({ num: n, velocity: fps });
+    }
+    if (cols[0].match(/^[A-Z]/) && shots.length > 0) break;
+  }
+  return shots;
+}
+
+// ════════════════════════════════════════════════════
+//  GROUP / CARTRIDGE GENERATION
+// ════════════════════════════════════════════════════
+function generateCartridges(batch) {
+  const mode = batch.group_mode || 'none';
+  if (mode === 'manual' && batch.groups && batch.groups.length) {
+    const cartridges = [];
+    batch.groups.forEach((g, gi) => {
+      for (let i=0;i<(g.count||1);i++) {
+        const ex = (batch.cartridges||[]).find(c=>c.group_idx===gi&&c.group_pos===i)||{};
+        cartridges.push({ num:cartridges.length+1, group_idx:gi, group_pos:i, group_label:g.label||`Group ${gi+1}`, charge:ex.charge??(g.charge??batch.charge_fixed??null), coal:ex.coal??(g.coal??batch.coal??null), jump:ex.jump??(g.jump??batch.jump??null), loaded:ex.loaded??false, notes:ex.notes??'' });
+      }
+    });
+    return cartridges;
+  }
+  if (mode === 'auto') {
+    const total=batch.cartridge_count||10, gs=batch.auto_group_size||3, numGroups=Math.ceil(total/gs);
+    const cartridges=[];
+    for (let gi=0;gi<numGroups;gi++) {
+      const roundsInGroup=Math.min(gs,total-gi*gs), t=numGroups>1?gi/(numGroups-1):0;
+      const groupCharge=(batch.charge_min!=null&&batch.charge_max!=null)?parseFloat((batch.charge_min+t*(batch.charge_max-batch.charge_min)).toFixed(2)):(batch.charge_fixed??null);
+      const groupCoal  =(batch.coal_min  !=null&&batch.coal_max  !=null)?parseFloat((batch.coal_min  +t*(batch.coal_max  -batch.coal_min  )).toFixed(4)):(batch.coal??null);
+      const groupJump  =(batch.jump_min  !=null&&batch.jump_max  !=null)?parseFloat((batch.jump_min  +t*(batch.jump_max  -batch.jump_min  )).toFixed(4)):(batch.jump??null);
+      for (let i=0;i<roundsInGroup;i++) {
+        const ex=(batch.cartridges||[]).find(c=>c.group_idx===gi&&c.group_pos===i)||{};
+        cartridges.push({ num:cartridges.length+1, group_idx:gi, group_pos:i, group_label:`Group ${gi+1}`, charge:ex.charge??groupCharge, coal:ex.coal??groupCoal, jump:ex.jump??groupJump, loaded:ex.loaded??false, notes:ex.notes??'' });
+      }
+    }
+    return cartridges;
+  }
+  // flat
+  const count=batch.cartridge_count||10, isLadder=batch.load_dev_type==='Charge Ladder', isSeat=batch.load_dev_type==='Seating Ladder', isJump=batch.load_dev_type==='Jump Ladder';
+  const existing=batch.cartridges||[];
+  return Array.from({length:count},(_,i)=>{
+    const ex=existing[i]||{};
+    let charge=batch.charge_fixed??null, coal=batch.coal??null, jump=batch.jump??null;
+    if (isLadder&&batch.charge_min!=null){const s=count>1?(batch.charge_max-batch.charge_min)/(count-1):0;charge=parseFloat((batch.charge_min+s*i).toFixed(2));}
+    if (isSeat  &&batch.charge_min!=null){const s=count>1?(batch.charge_max-batch.charge_min)/(count-1):0;coal=parseFloat((batch.charge_min+s*i).toFixed(4));}
+    if (isJump  &&batch.jump_min  !=null){const s=count>1?(batch.jump_max-batch.jump_min)/(count-1):0;jump=parseFloat((batch.jump_min+s*i).toFixed(4));}
+    return { num:i+1, group_idx:null, group_label:null, charge:ex.charge??charge, coal:ex.coal??coal, jump:ex.jump??jump, loaded:ex.loaded??false, notes:ex.notes??'' };
+  });
+}
+
+function bookVeloForRound(batch, cart) {
+  const minV=batch.rds_velo_min, maxV=batch.rds_velo_max;
+  const minC=batch.rds_charge_min??batch.charge_min??batch.charge_fixed;
+  const maxC=batch.rds_charge_max??batch.charge_max??batch.charge_fixed;
+  if (!minV||!maxV) return null;
+  if (!minC||!maxC||minC===maxC) return Math.round((minV+maxV)/2);
+  const charge = cart.charge ?? minC;
+  const t = Math.max(0,Math.min(1,(charge-minC)/(maxC-minC)));
+  return Math.round(minV + t*(maxV-minV));
+}
+
+function adjVelo(batch, firearm, bookVelo) {
+  if (!bookVelo||!firearm?.barrel_length||!batch.rds_barrel_length) return null;
+  return Math.round(bookVelo + (firearm.barrel_length - batch.rds_barrel_length) * 25);
+}
+
+async function getBulletData(name) {
+  if (!name) return {};
+  return (await dbGetAll('components')).find(c=>c.type==='bullet'&&c.name===name)||{};
+}
+
+// ════════════════════════════════════════════════════
+//  DASHBOARD
+// ════════════════════════════════════════════════════
+register('dashboard', async () => {
+  setTitle('RELOAD // MASTER', false, `<button class="action-btn" onclick="exportData()">${ICONS.export} EXPORT</button>`);
+  const [batches,firearms] = await Promise.all([dbGetAll('batches'),dbGetAll('firearms')]);
+  const recent = [...batches].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,5);
+  const totalShots = batches.reduce((s,b)=>s+(b.shots?.filter(x=>x.velocity>0).length||0),0);
+  render(`
+    <div class="stat-grid" style="margin-bottom:14px">
+      <div class="stat-box hi">
+        <div class="s-label">Firearms</div>
+        <div class="s-val">${firearms.length}</div>
+        <div class="s-unit">REGISTERED</div>
+      </div>
+      <div class="stat-box hi">
+        <div class="s-label">Batches</div>
+        <div class="s-val">${batches.length}</div>
+        <div class="s-unit">ON FILE</div>
+      </div>
+      <div class="stat-box hi">
+        <div class="s-label">Shots</div>
+        <div class="s-val">${totalShots}</div>
+        <div class="s-unit">RECORDED</div>
+      </div>
+    </div>
+    ${recent.length ? `
+    <div class="card">
+      <div class="card-header">
+        <div class="marker"></div>
+        <h3>Recent Batches</h3>
+        <div class="hdr-tag">BY DATE</div>
+      </div>
+      ${recent.map(b => {
+        const stats = b.shots?.length ? calcStats(b.shots.map(s=>s.velocity)) : null;
+        const isGrouped = b.group_mode && b.group_mode !== 'none';
+        return `<div class="list-item" onclick="navigate('batch/${b.id}')">
+          <div class="info">
+            <h4>${b.id}</h4>
+            <p>${b.bullet||'—'} · ${b.powder||'—'} · ${fmtDate(b.range_date||b.created_at)}</p>
+          </div>
+          ${isGrouped ? `<span class="badge badge-grouped">GRP</span>` : ''}
+          ${stats&&stats.n>0 ? `<span class="badge badge-val mono">${Math.round(stats.avg)} fps</span>` : ''}
+          <span class="chevron">›</span>
+        </div>`;
+      }).join('')}
+    </div>` : `
+    <div class="empty-state">
+      <div class="empty-icon">${ICONS.target}</div>
+      <h3>No Batches Yet</h3>
+      <p>Head to Batch to create your first load development session.</p>
+    </div>`}
+  `);
+});
+
+// ════════════════════════════════════════════════════
+//  FIREARMS
+// ════════════════════════════════════════════════════
+register('firearms', async () => {
+  setTitle('ARMS', false, `<button class="action-btn" onclick="navigate('firearms/new')">${ICONS.plus} ADD</button>`);
+  const firearms = await dbGetAll('firearms');
+  render(firearms.length===0 ? `
+    <div class="empty-state">
+      <div class="empty-icon"><canvas id="empty-rifle-arms" width="160" height="60" style="image-rendering:pixelated;image-rendering:crisp-edges"></canvas></div>
+      <h3>No Firearms Registered</h3>
+      <p>Add your rifles to link them to load batches.</p>
+      <div style="margin-top:20px">${mkBtn('REGISTER FIREARM','btn-primary',"navigate('firearms/new')",'')}  </div>
+    </div>` :
+    firearms.map(f => `
+    <div class="list-item">
+      <div class="info">
+        <h4>${f.make_model||f.name}</h4>
+        <p>${f.chamber||f.caliber||'—'} · ${f.barrel_length?f.barrel_length+'″ BARREL':'—'}</p>
+      </div>
+      ${mkBtnSm('EDIT','btn-secondary',`navigate('firearms/edit/${f.id}')`,'')}
+    </div>`).join(''));
+  // draw rifle on empty state if shown
+  setTimeout(() => {
+    const c = document.getElementById('empty-rifle-arms');
+    if (c) drawRifleOnCanvas(c, 160, 60, 4, 6);
+  }, 50);
+});
+
+function drawRifleOnCanvas(canvas, w, h, sx, sy) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,w,h);
+  const sprite = RIFLE_SPRITE;
+  const rows=sprite.length, cols=sprite[0].length;
+  const ox=Math.floor((w-cols*sx)/2), oy=Math.floor((h-rows*sy)/2);
+  const pal={1:'#4fc3f7',2:'#90d8f0',3:'#4fc3f7'};
+  for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
+    const v=sprite[r][c]; if (!v) continue;
+    ctx.fillStyle=pal[v]; ctx.fillRect(ox+c*sx,oy+r*sy,sx,sy);
+  }
+}
+
+register('firearms/new', ()=>renderFirearmForm(null));
+register('firearms/edit', ({id})=>renderFirearmForm(id));
+async function renderFirearmForm(id) {
+  const fa = id ? await dbGet('firearms',Number(id)) : null;
+  setTitle(fa?'EDIT FIREARM':'ADD FIREARM', true);
+  document.getElementById('back-btn').onclick=()=>navigate('firearms');
+  render(`
+    <div class="form-group"><label>Firearm ID *</label><input class="form-control" id="fa-id" value="${fa?.name||''}" placeholder="e.g. SAV16-308"></div>
+    <div class="form-group"><label>Make / Model *</label><input class="form-control" id="fa-mm" value="${fa?.make_model||''}" placeholder="e.g. Savage 116"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Chamber</label><input class="form-control" id="fa-ch" value="${fa?.chamber||''}" placeholder="308 WIN"></div>
+      <div class="form-group"><label>Caliber</label><input class="form-control" id="fa-cal" value="${fa?.caliber||''}" placeholder=".308"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Barrel Length (in)</label><input class="form-control" id="fa-bl" type="number" inputmode="decimal" step="0.5" value="${fa?.barrel_length||''}"></div>
+      <div class="form-group"><label>Notes</label><input class="form-control" id="fa-notes" value="${fa?.notes||''}"></div>
+    </div>
+    <div class="btn-group" style="margin-top:8px">
+      ${mkBtn('SAVE','btn-primary',`saveFirearm(${id||'null'})`,'')}
+      ${fa?mkBtn('DELETE','btn-danger',`deleteFirearm(${id})`):''}
+    </div>`);
+}
+window.saveFirearm = async (id) => {
+  const obj={name:document.getElementById('fa-id').value.trim(),make_model:document.getElementById('fa-mm').value.trim(),chamber:document.getElementById('fa-ch').value.trim(),caliber:document.getElementById('fa-cal').value.trim(),barrel_length:parseFloat(document.getElementById('fa-bl').value)||null,notes:document.getElementById('fa-notes').value.trim()};
+  if (!obj.name||!obj.make_model){toast('ID AND MAKE/MODEL REQUIRED','error');return;}
+  if (id) obj.id=Number(id);
+  await dbPut('firearms',obj); toast('FIREARM SAVED','success'); navigate('firearms');
+};
+window.deleteFirearm = async (id) => { if (!confirm_('Delete this firearm?')) return; await dbDelete('firearms',Number(id)); toast('DELETED'); navigate('firearms'); };
+
+// ════════════════════════════════════════════════════
+//  INVENTORY
+// ════════════════════════════════════════════════════
+register('inventory', async () => {
+  setTitle('INVENTORY', false, `<button class="action-btn" onclick="showAddComponent()">${ICONS.plus} ADD</button>`);
+  const comps = await dbGetAll('components');
+  const types=['bullet','powder','primer','case'], labels={bullet:'Bullets',powder:'Powders',primer:'Primers',case:'Cases'};
+  const grouped={}; types.forEach(t=>{grouped[t]=comps.filter(c=>c.type===t);});
+  render(types.map(t=>`
+    <div class="section-title">${labels[t]}</div>
+    ${grouped[t].length===0?`<p class="text-muted" style="font-size:14px;margin-bottom:12px;font-family:'Share Tech Mono',monospace">// NONE ON FILE</p>`:
+    grouped[t].map(c=>`<div class="inv-row">
+      <div class="inv-row-top">
+        <div class="inv-row-name">${c.name}</div>
+        ${mkBtnSm('EDIT','btn-secondary',`editComponent(${c.id})`,'')}
+        ${mkBtnSm('','btn-danger',`deleteComponent(${c.id})`,'')}
+      </div>
+      <div class="inv-row-meta">
+        <span class="qty-label">QTY</span>
+        <div class="stepper"><button onclick="adjustQty(${c.id},-1)">−</button><span class="step-val" id="qty-${c.id}">${c.quantity??0}</span><button onclick="adjustQty(${c.id},1)">+</button></div>
+        ${t==='case'?`<span class="qty-label" style="margin-left:8px">FIRES</span>
+          <div class="stepper"><button onclick="adjustFireCount(${c.id},-1)">−</button><span class="step-val" id="fc-${c.id}" style="color:${(c.fire_count||0)>=5?'var(--danger)':(c.fire_count||0)>=3?'var(--accent)':'var(--text)'}">${c.fire_count??0}</span><button onclick="adjustFireCount(${c.id},1)">+</button></div>
+          ${(c.fire_count||0)>=5?`<span class="fire-badge">${ICONS.warn} ANNEAL</span>`:(c.fire_count||0)>=3?`<span class="fire-badge" style="color:var(--accent);border-color:rgba(79,195,247,.3);background:rgba(79,195,247,.08)">${ICONS.warn} CHECK NECKS</span>`:''}` :''}
+      </div>
+      ${t==='bullet'&&(c.bc_g1||c.bullet_weight_gr)?`
+      <div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        ${c.bullet_weight_gr?`<div><div class="rc-label">Weight</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--text)">${c.bullet_weight_gr} gr</div></div>`:''}
+        ${c.bc_g1?`<div><div class="rc-label">BC G1</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--accent)">${c.bc_g1}</div></div>`:''}
+        ${c.bc_g7?`<div><div class="rc-label">BC G7</div><div style="font-size:14px;font-family:'Share Tech Mono',monospace;margin-top:2px;color:var(--accent)">${c.bc_g7}</div></div>`:''}
+      </div>`:''}
+    </div>`).join('')}`).join(''));
+});
+window.showAddComponent = () => {
+  document.body.insertAdjacentHTML('beforeend',`
+    <div class="overlay" id="comp-overlay" onclick="if(event.target===this)this.remove()">
+      <div class="modal"><div class="modal-handle"></div><h3>Add Component</h3>
+        <div class="form-group"><label>Type</label><select class="form-control" id="comp-type" onchange="toggleCompFields(this.value)"><option value="bullet">Bullet</option><option value="powder">Powder</option><option value="primer">Primer</option><option value="case">Case</option></select></div>
+        <div class="form-group"><label>Name</label><input class="form-control" id="comp-name" placeholder="e.g. HDY 178 ELDX"></div>
+        <div class="form-row"><div class="form-group"><label>Quantity</label><input class="form-control" id="comp-qty" type="number" inputmode="numeric" value="0"></div><div class="form-group"><label>Notes</label><input class="form-control" id="comp-notes"></div></div>
+        <div id="bullet-fields">
+          <div class="form-row"><div class="form-group"><label>Weight (gr)</label><input class="form-control" id="comp-weight" type="number" inputmode="decimal" step="0.1"></div><div class="form-group"><label>BC G1</label><input class="form-control" id="comp-bc-g1" type="number" inputmode="decimal" step="0.001"></div></div>
+          <div class="form-row"><div class="form-group"><label>BC G7</label><input class="form-control" id="comp-bc-g7" type="number" inputmode="decimal" step="0.001"></div><div class="form-group"><label>Factory Max COAL</label><input class="form-control" id="comp-factory-coal" type="number" inputmode="decimal" step="0.001"></div></div>
+        </div>
+        <div id="case-fields" style="display:none"><div class="form-group"><label>Trim Length (in)</label><input class="form-control" id="comp-trim" type="number" inputmode="decimal" step="0.001"></div></div>
+        ${mkBtn('ADD COMPONENT','btn-primary','saveComponent()','plus')}
+      </div>
+    </div>`);
+};
+window.toggleCompFields = t => { document.getElementById('bullet-fields').style.display=t==='bullet'?'':'none'; document.getElementById('case-fields').style.display=t==='case'?'':'none'; };
+window.saveComponent = async () => {
+  const type=document.getElementById('comp-type').value, name=document.getElementById('comp-name').value.trim();
+  if (!name){toast('NAME REQUIRED','error');return;}
+  const obj={type,name,quantity:parseInt(document.getElementById('comp-qty').value)||0,notes:document.getElementById('comp-notes').value.trim(),fire_count:0};
+  if (type==='bullet'){obj.bullet_weight_gr=parseFloat(document.getElementById('comp-weight').value)||null;obj.bc_g1=parseFloat(document.getElementById('comp-bc-g1').value)||null;obj.bc_g7=parseFloat(document.getElementById('comp-bc-g7').value)||null;obj.factory_coal=parseFloat(document.getElementById('comp-factory-coal').value)||null;}
+  if (type==='case') obj.trim_length=parseFloat(document.getElementById('comp-trim').value)||null;
+  await dbPut('components',obj); document.getElementById('comp-overlay').remove(); toast('ADDED','success'); navigate('inventory');
+};
+window.editComponent = async (id) => {
+  const c=await dbGet('components',id); if (!c) return;
+  document.body.insertAdjacentHTML('beforeend',`
+    <div class="overlay" id="edit-comp-overlay" onclick="if(event.target===this)this.remove()">
+      <div class="modal"><div class="modal-handle"></div><h3>Edit ${c.name}</h3>
+        <div class="form-group"><label>Name</label><input class="form-control" id="ec-name" value="${c.name}"></div>
+        <div class="form-row"><div class="form-group"><label>Quantity</label><input class="form-control" id="ec-qty" type="number" value="${c.quantity??0}"></div>${c.type==='case'?`<div class="form-group"><label>Fire Count</label><input class="form-control" id="ec-fc" type="number" value="${c.fire_count??0}"></div>`:'<div></div>'}</div>
+        <div class="form-group"><label>Notes</label><input class="form-control" id="ec-notes" value="${c.notes||''}"></div>
+        ${c.type==='bullet'?`<div class="divider"></div><div class="form-row"><div class="form-group"><label>Weight (gr)</label><input class="form-control" id="ec-weight" type="number" step="0.1" value="${c.bullet_weight_gr??''}"></div><div class="form-group"><label>BC G1</label><input class="form-control" id="ec-bc-g1" type="number" step="0.001" value="${c.bc_g1??''}"></div></div><div class="form-group"><label>BC G7</label><input class="form-control" id="ec-bc-g7" type="number" step="0.001" value="${c.bc_g7??''}"></div>`:''}
+        ${c.type==='case'?`<div class="divider"></div><div class="form-group"><label>Trim Length (in)</label><input class="form-control" id="ec-trim" type="number" step="0.001" value="${c.trim_length??''}"></div>`:''}
+        <div class="btn-group">
+          ${mkBtn('SAVE','btn-primary',`saveEditComponent(${id})`,'save')}
+          ${mkBtn('CANCEL','btn-secondary',"document.getElementById('edit-comp-overlay').remove()")}
+        </div>
+      </div>
+    </div>`);
+};
+window.saveEditComponent = async (id) => {
+  const c=await dbGet('components',id);
+  c.name=document.getElementById('ec-name').value.trim()||c.name;
+  c.quantity=parseInt(document.getElementById('ec-qty').value)||0;
+  c.notes=document.getElementById('ec-notes').value.trim();
+  if (c.type==='case'){c.fire_count=parseInt(document.getElementById('ec-fc').value)||0;c.trim_length=parseFloat(document.getElementById('ec-trim').value)||null;}
+  if (c.type==='bullet'){c.bullet_weight_gr=parseFloat(document.getElementById('ec-weight').value)||null;c.bc_g1=parseFloat(document.getElementById('ec-bc-g1').value)||null;c.bc_g7=parseFloat(document.getElementById('ec-bc-g7').value)||null;}
+  await dbPut('components',c); document.getElementById('edit-comp-overlay').remove(); toast('SAVED','success'); navigate('inventory');
+};
+window.adjustQty = async (id,delta) => { const c=await dbGet('components',id); c.quantity=Math.max(0,(c.quantity??0)+delta); await dbPut('components',c); const el=document.getElementById(`qty-${id}`); if(el) el.textContent=c.quantity; };
+window.adjustFireCount = async (id,delta) => { const c=await dbGet('components',id); c.fire_count=Math.max(0,(c.fire_count??0)+delta); await dbPut('components',c); navigate('inventory'); };
+window.deleteComponent = async (id) => { if (!confirm_('Remove this component?')) return; await dbDelete('components',id); toast('REMOVED'); navigate('inventory'); };
+
+// ════════════════════════════════════════════════════
+//  BATCH LIST
+// ════════════════════════════════════════════════════
+register('batches', async () => {
+  setTitle('BATCHES', false, `<button class="action-btn" onclick="navigate('batches/new')">${ICONS.plus} NEW</button>`);
+  const batches=await dbGetAll('batches');
+  const sorted=[...batches].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  render(sorted.length===0?`
+    <div class="empty-state">
+      <div class="empty-icon">${ICONS.doc}</div>
+      <h3>No Batches On File</h3>
+      <p>Create a new batch to start tracking a load development session.</p>
+      <div style="margin-top:20px">${mkBtn('NEW BATCH','btn-primary',"navigate('batches/new')","plus")}</div>
+    </div>` :
+    sorted.map(b=>{
+      const stats=b.shots?.length?calcStats(b.shots.map(s=>s.velocity)):null;
+      const isGrouped=b.group_mode&&b.group_mode!=='none';
+      const badgeClass=isGrouped?'badge-grouped':b.load_dev_type==='Charge Ladder'?'badge-ladder':'';
+      const badgeText=isGrouped?'GRP':b.load_dev_type==='Charge Ladder'?'LADDER':'';
+      return `<div class="list-item" onclick="navigate('batch/${b.id}')">
+        <div class="info"><h4>${b.id}</h4><p>${b.bullet||'—'} · ${b.powder||'—'}</p></div>
+        ${badgeText?`<span class="badge ${badgeClass}">${badgeText}</span>`:''}
+        ${stats&&stats.n>0?`<span class="badge badge-val mono">${Math.round(stats.avg)}</span>`:''}
+        <span class="chevron">›</span>
+      </div>`;
+    }).join('')
+  );
+});
+
+// ════════════════════════════════════════════════════
+//  NEW / EDIT BATCH FORM
+// ════════════════════════════════════════════════════
+register('batches/new', async () => {
+  setTitle('NEW BATCH', true);
+  document.getElementById('back-btn').onclick=()=>navigate('batches');
+  await renderBatchForm(null);
+});
+routes['batches/edit'] = async ({id}) => {
+  if (!id){navigate('batches');return;}
+  const batch=await dbGet('batches',id);
+  if (!batch){toast('BATCH NOT FOUND','error');navigate('batches');return;}
+  setTitle('EDIT BATCH', true);
+  document.getElementById('back-btn').onclick=()=>navigate('batch/'+id);
+  await renderBatchForm(batch);
+};
+
+async function renderBatchForm(batch) {
+  const [firearms,comps]=await Promise.all([dbGetAll('firearms'),dbGetAll('components')]);
+  const bullets=comps.filter(c=>c.type==='bullet'), powders=comps.filter(c=>c.type==='powder');
+  const primers=comps.filter(c=>c.type==='primer'), cases=comps.filter(c=>c.type==='case');
+  const selOpt=(arr,val)=>arr.map(x=>`<option ${x.name===val?'selected':''}>${x.name}</option>`).join('');
+  const fopt=firearms.map(f=>`<option value="${f.name}" ${f.name===(batch?.firearm_id||'')?'selected':''}>${f.name} — ${f.make_model}</option>`).join('');
+  const b=batch||{};
+  const typeOpts=['Validation Batch','Charge Ladder','Seating Ladder','Jump Ladder','Grouped'].map(t=>`<option ${t===(b.load_dev_type||'Validation Batch')?'selected':''}>${t}</option>`).join('');
+  const gMode=b.group_mode||'none';
+
+  render(`
+    <div class="section-title">Firearm & Components</div>
+    <div class="form-group"><label>Firearm *</label><select class="form-control" id="b-firearm"><option value="">— Select —</option>${fopt}</select></div>
+    <div class="form-group"><label>Bullet *</label><select class="form-control" id="b-bullet" onchange="autofillBulletData()"><option value="">— Select —</option>${selOpt(bullets,b.bullet)}</select></div>
+    <div class="form-row">
+      <div class="form-group"><label>Powder *</label><select class="form-control" id="b-powder"><option value="">— Select —</option>${selOpt(powders,b.powder)}</select></div>
+      <div class="form-group"><label>Primer</label><select class="form-control" id="b-primer"><option value="">— Select —</option>${selOpt(primers,b.primer)}</select></div>
+    </div>
+    <div class="form-group"><label>Case</label><select class="form-control" id="b-case"><option value="">— Select —</option>${selOpt(cases,b.case_brand)}</select></div>
+
+    <div class="section-title">Load Type</div>
+    <div class="form-row">
+      <div class="form-group"><label>Type *</label><select class="form-control" id="b-type" onchange="onBatchTypeChange()">${typeOpts}</select></div>
+      <div class="form-group" id="b-count-group"><label>Total Rounds</label><input class="form-control" id="b-count" type="number" inputmode="numeric" min="1" max="100" value="${b.cartridge_count||10}"></div>
+    </div>
+
+    <div id="flat-charge-wrap">
+      <div id="charge-fixed-group" class="form-group"><label>Charge Weight (gr)</label><input class="form-control" id="b-charge-fixed" type="number" inputmode="decimal" step="0.1" value="${b.charge_fixed??''}"></div>
+      <div id="charge-range-group" style="display:none">
+        <div class="form-row three">
+          <div class="form-group"><label>Min (gr)</label><input class="form-control" id="b-charge-min" type="number" inputmode="decimal" step="0.1" value="${b.charge_min??''}"></div>
+          <div class="form-group"><label>Max (gr)</label><input class="form-control" id="b-charge-max" type="number" inputmode="decimal" step="0.1" value="${b.charge_max??''}"></div>
+          <div class="form-group"><label>Steps</label><input class="form-control" id="b-charge-steps" type="number" inputmode="numeric" min="1" value="1"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="grouped-wrap" style="display:none">
+      <div class="section-title">Group Config</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-secondary btn-sm" id="grp-btn-auto" onclick="setGroupMode('auto')" style="${gMode==='auto'?'border-color:var(--accent);color:var(--accent)':''}">AUTO-GROUP</button>
+        <button class="btn btn-secondary btn-sm" id="grp-btn-manual" onclick="setGroupMode('manual')" style="${gMode==='manual'?'border-color:var(--accent);color:var(--accent)':''}">MANUAL GROUPS</button>
+      </div>
+      <div id="auto-group-config" style="display:${gMode==='auto'?'':'none'}">
+        <div class="form-row">
+          <div class="form-group"><label>Rounds per Group</label><input class="form-control" id="b-auto-gs" type="number" inputmode="numeric" min="1" value="${b.auto_group_size||3}" oninput="updateAutoGroupPreview()"></div>
+          <div class="form-group"><label>Total Rounds</label><input class="form-control" id="b-auto-total" type="number" inputmode="numeric" min="1" value="${b.cartridge_count||9}" oninput="updateAutoGroupPreview()"></div>
+        </div>
+        <div id="auto-group-preview" style="font-size:12px;color:var(--muted2);margin-bottom:12px;font-family:'Share Tech Mono',monospace"></div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted2);margin-bottom:8px">// What Varies Across Groups</div>
+        <div class="form-row">
+          <div class="form-group"><label>Charge Min (gr)</label><input class="form-control" id="b-auto-cmin" type="number" inputmode="decimal" step="0.1" value="${b.charge_min??''}" placeholder="43.0"></div>
+          <div class="form-group"><label>Charge Max (gr)</label><input class="form-control" id="b-auto-cmax" type="number" inputmode="decimal" step="0.1" value="${b.charge_max??''}" placeholder="45.0"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>COAL Min (in)</label><input class="form-control" id="b-auto-coalmin" type="number" inputmode="decimal" step="0.001" value="${b.coal_min??''}" placeholder="2.780"></div>
+          <div class="form-group"><label>COAL Max (in)</label><input class="form-control" id="b-auto-coalmax" type="number" inputmode="decimal" step="0.001" value="${b.coal_max??''}" placeholder="2.820"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Jump Min (in)</label><input class="form-control" id="b-auto-jumpmin" type="number" inputmode="decimal" step="0.001" value="${b.jump_min??''}" placeholder="0.030"></div>
+          <div class="form-group"><label>Jump Max (in)</label><input class="form-control" id="b-auto-jumpmax" type="number" inputmode="decimal" step="0.001" value="${b.jump_max??''}" placeholder="0.060"></div>
+        </div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted2);margin:8px 0">// Fixed for All Groups</div>
+        <div class="form-row">
+          <div class="form-group"><label>Fixed Charge</label><input class="form-control" id="b-auto-cfixed" type="number" inputmode="decimal" step="0.1" value="${b.charge_fixed??''}"></div>
+          <div class="form-group"><label>Fixed COAL</label><input class="form-control" id="b-auto-coalfixed" type="number" inputmode="decimal" step="0.001" value="${b.coal??''}"></div>
+        </div>
+      </div>
+      <div id="manual-group-config" style="display:${gMode==='manual'?'':'none'}">
+        <div id="manual-groups-list"></div>
+        <button class="btn btn-secondary btn-sm" onclick="addManualGroup()" style="margin-bottom:16px">${ICONS.plus} ADD GROUP</button>
+      </div>
+    </div>
+
+    <div class="section-title">Seating / Jump (defaults)</div>
+    <div class="form-row three">
+      <div class="form-group"><label>COAL (in)</label><input class="form-control" id="b-coal" type="number" inputmode="decimal" step="0.001" value="${b.coal??''}"></div>
+      <div class="form-group"><label>COAL-to-Lands</label><input class="form-control" id="b-ctl" type="number" inputmode="decimal" step="0.001" value="${b.coal_to_lands??''}"></div>
+      <div class="form-group"><label>Jump (in)</label><input class="form-control" id="b-jump" type="number" inputmode="decimal" step="0.001" value="${b.jump??''}"></div>
+    </div>
+
+    <div class="section-title">Bullet Ballistics</div>
+    <div class="form-row">
+      <div class="form-group"><label>Bullet Weight (gr)</label><input class="form-control" id="b-wt" type="number" inputmode="decimal" step="0.1" value="${b.bullet_weight_gr??''}"></div>
+      <div class="form-group"><label>BC G1</label><input class="form-control" id="b-bc" type="number" inputmode="decimal" step="0.001" value="${b.bc_g1??''}"></div>
+    </div>
+
+    <div class="section-title">Reference Data (RDS)</div>
+    <div class="form-row">
+      <div class="form-group"><label>RDS Source</label><input class="form-control" id="b-rds" value="${b.rds_source||''}" placeholder="e.g. Hornady Manual"></div>
+      <div class="form-group"><label>RDS Barrel (in)</label><input class="form-control" id="b-rds-bl" type="number" inputmode="decimal" step="0.5" value="${b.rds_barrel_length??''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>RDS Velo Min (fps)</label><input class="form-control" id="b-rds-vmin" type="number" value="${b.rds_velo_min??''}" placeholder="2300"></div>
+      <div class="form-group"><label>RDS Velo Max (fps)</label><input class="form-control" id="b-rds-vmax" type="number" value="${b.rds_velo_max??''}" placeholder="2550"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>RDS Charge Min (gr)</label><input class="form-control" id="b-rds-cmin" type="number" inputmode="decimal" step="0.1" value="${b.rds_charge_min??''}"></div>
+      <div class="form-group"><label>RDS Charge Max (gr)</label><input class="form-control" id="b-rds-cmax" type="number" inputmode="decimal" step="0.1" value="${b.rds_charge_max??''}"></div>
+    </div>
+
+    <div class="form-group" style="margin-top:8px"><label>Loaded Date</label><input class="form-control" id="b-ldate" type="date" value="${b.loaded_date||new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-group"><label>Notes</label><textarea class="form-control" id="b-notes">${b.notes||''}</textarea></div>
+
+    <div class="btn-group" style="margin-top:8px">
+      ${mkBtn(batch?'SAVE CHANGES':'CREATE BATCH','btn-primary',batch?`updateBatch('${batch.id}')`:'saveBatch()','save')}
+      ${batch?mkBtn('DELETE','btn-danger',`deleteBatch('${batch.id}')`):''}
+    </div>
+  `);
+
+  onBatchTypeChange();
+  if (gMode==='manual' && b.groups) b.groups.forEach(g=>addManualGroup(g));
+  updateAutoGroupPreview();
+}
+
+window.onBatchTypeChange = () => {
+  const type=document.getElementById('b-type')?.value||'';
+  const isGrouped=type==='Grouped', isLadder=type==='Charge Ladder';
+  document.getElementById('flat-charge-wrap').style.display=isGrouped?'none':'';
+  document.getElementById('grouped-wrap').style.display=isGrouped?'':'none';
+  if (!isGrouped) {
+    document.getElementById('charge-fixed-group').style.display=isLadder?'none':'';
+    document.getElementById('charge-range-group').style.display=isLadder?'':'none';
+  }
+};
+window.setGroupMode = mode => {
+  document.getElementById('auto-group-config').style.display  =mode==='auto'  ?'':'none';
+  document.getElementById('manual-group-config').style.display=mode==='manual'?'':'none';
+  ['auto','manual'].forEach(m=>{const b=document.getElementById(`grp-btn-${m}`);if(b)b.style.cssText=m===mode?'border-color:var(--accent);color:var(--accent)':'';});
+};
+window.updateAutoGroupPreview = () => {
+  const total=parseInt(document.getElementById('b-auto-total')?.value)||0, gs=parseInt(document.getElementById('b-auto-gs')?.value)||3;
+  const el=document.getElementById('auto-group-preview'); if (!el||!total||!gs) return;
+  const ng=Math.ceil(total/gs);
+  el.textContent=`// ${ng} GROUP${ng!==1?'S':''} · ${gs} ROUNDS EACH · ${total} TOTAL`;
+};
+let _manualGroupCount=0;
+window.addManualGroup = prefill => {
+  const idx=_manualGroupCount++;
+  const list=document.getElementById('manual-groups-list'); if (!list) return;
+  const div=document.createElement('div'); div.className='manual-group-row'; div.id=`mg-${idx}`;
+  div.innerHTML=`<button class="del-grp" onclick="document.getElementById('mg-${idx}').remove()">✕</button>
+    <div class="form-row" style="margin-bottom:8px">
+      <div class="form-group" style="margin-bottom:0"><label>Label</label><input class="form-control mg-label" value="${prefill?.label||`Group ${idx+1}`}"></div>
+      <div class="form-group" style="margin-bottom:0"><label>Rounds</label><input class="form-control mg-count" type="number" inputmode="numeric" min="1" value="${prefill?.count||3}"></div>
+    </div>
+    <div class="form-row three">
+      <div class="form-group" style="margin-bottom:0"><label>Charge (gr)</label><input class="form-control mg-charge" type="number" inputmode="decimal" step="0.1" value="${prefill?.charge??''}"></div>
+      <div class="form-group" style="margin-bottom:0"><label>COAL (in)</label><input class="form-control mg-coal" type="number" inputmode="decimal" step="0.001" value="${prefill?.coal??''}"></div>
+      <div class="form-group" style="margin-bottom:0"><label>Jump (in)</label><input class="form-control mg-jump" type="number" inputmode="decimal" step="0.001" value="${prefill?.jump??''}"></div>
+    </div>`;
+  list.appendChild(div);
+};
+function collectManualGroups() {
+  return Array.from(document.querySelectorAll('.manual-group-row')).map(row=>({label:row.querySelector('.mg-label')?.value.trim()||'Group',count:parseInt(row.querySelector('.mg-count')?.value)||3,charge:parseFloat(row.querySelector('.mg-charge')?.value)||null,coal:parseFloat(row.querySelector('.mg-coal')?.value)||null,jump:parseFloat(row.querySelector('.mg-jump')?.value)||null}));
+}
+window.autofillBulletData = async () => {
+  const name=document.getElementById('b-bullet')?.value; if (!name) return;
+  const b=await getBulletData(name);
+  const bcEl=document.getElementById('b-bc'), wtEl=document.getElementById('b-wt');
+  if (bcEl&&b.bc_g1&&!bcEl.value) bcEl.value=b.bc_g1;
+  if (wtEl&&b.bullet_weight_gr&&!wtEl.value) wtEl.value=b.bullet_weight_gr;
+  if (b.bc_g1||b.bullet_weight_gr) toast(`BC G1: ${b.bc_g1||'—'} · WT: ${b.bullet_weight_gr||'—'} GR`,'success');
+};
+window.toggleChargeFields = () => {
+  const t=document.getElementById('b-type').value, isLadder=t==='Charge Ladder';
+  document.getElementById('charge-fixed-group').style.display=isLadder?'none':'';
+  document.getElementById('charge-range-group').style.display=isLadder?'':'none';
+};
+
+function _collectBatchFields(isNew) {
+  const type=document.getElementById('b-type').value;
+  const isGrouped=type==='Grouped', isLadder=type==='Charge Ladder';
+  const autoMode=document.getElementById('auto-group-config')?.style.display!=='none';
+  const gMode=isGrouped?(autoMode?'auto':'manual'):'none';
+  return {
+    firearm_id: document.getElementById('b-firearm').value,
+    bullet:     document.getElementById('b-bullet').value,
+    powder:     document.getElementById('b-powder').value,
+    primer:     document.getElementById('b-primer').value,
+    case_brand: document.getElementById('b-case').value,
+    load_dev_type: type, group_mode: gMode,
+    cartridge_count: parseInt(document.getElementById(gMode==='auto'?'b-auto-total':'b-count')?.value)||10,
+    charge_fixed: parseFloat(document.getElementById(gMode==='auto'?'b-auto-cfixed':'b-charge-fixed')?.value)||null,
+    charge_min: parseFloat(document.getElementById(gMode==='auto'?'b-auto-cmin':'b-charge-min')?.value)||null,
+    charge_max: parseFloat(document.getElementById(gMode==='auto'?'b-auto-cmax':'b-charge-max')?.value)||null,
+    coal:        parseFloat(document.getElementById(gMode==='auto'?'b-auto-coalfixed':'b-coal')?.value)||null,
+    coal_min:    parseFloat(document.getElementById('b-auto-coalmin')?.value)||null,
+    coal_max:    parseFloat(document.getElementById('b-auto-coalmax')?.value)||null,
+    coal_to_lands: parseFloat(document.getElementById('b-ctl')?.value)||null,
+    jump:        parseFloat(document.getElementById('b-jump')?.value)||null,
+    jump_min:    parseFloat(document.getElementById('b-auto-jumpmin')?.value)||null,
+    jump_max:    parseFloat(document.getElementById('b-auto-jumpmax')?.value)||null,
+    auto_group_size: gMode==='auto'?(parseInt(document.getElementById('b-auto-gs')?.value)||3):null,
+    groups:      gMode==='manual'?collectManualGroups():null,
+    bullet_weight_gr: parseFloat(document.getElementById('b-wt').value)||null,
+    bc_g1:       parseFloat(document.getElementById('b-bc').value)||null,
+    rds_source:  document.getElementById('b-rds').value.trim(),
+    rds_barrel_length: parseFloat(document.getElementById('b-rds-bl').value)||null,
+    rds_velo_min: parseFloat(document.getElementById('b-rds-vmin').value)||null,
+    rds_velo_max: parseFloat(document.getElementById('b-rds-vmax').value)||null,
+    rds_charge_min: parseFloat(document.getElementById('b-rds-cmin').value)||null,
+    rds_charge_max: parseFloat(document.getElementById('b-rds-cmax').value)||null,
+    loaded_date: document.getElementById('b-ldate').value,
+    notes:       document.getElementById('b-notes').value.trim(),
+  };
+}
+window.saveBatch = async () => {
+  const fields=_collectBatchFields(true);
+  if (!fields.firearm_id||!fields.bullet||!fields.powder){toast('FIREARM, BULLET & POWDER REQUIRED','error');return;}
+  const chargeStr=fields.charge_min?`${fields.charge_min}-${fields.charge_max}`:fields.charge_fixed;
+  let id=genBatchId(fields.firearm_id,fields.bullet,fields.load_dev_type,chargeStr);
+  if (await dbGet('batches',id)) id+='-'+Date.now().toString(36);
+  const batch={...fields, id, shots:[], created_at:new Date().toISOString()};
+  await dbPut('batches',batch); toast('BATCH CREATED','success'); navigate('batch/'+id);
+};
+window.updateBatch = async batchId => {
+  const batch=await dbGet('batches',batchId);
+  if (!batch) return;
+  const fields=_collectBatchFields(false);
+  if (!fields.firearm_id||!fields.bullet||!fields.powder){toast('FIREARM, BULLET & POWDER REQUIRED','error');return;}
+  Object.assign(batch, fields);
+  await dbPut('batches',batch); toast('BATCH UPDATED','success'); navigate('batch/'+batchId);
+};
+
+// ════════════════════════════════════════════════════
+//  BATCH DETAIL
+// ════════════════════════════════════════════════════
+routes['batch'] = async ({id}) => {
+  if (!id){navigate('batches');return;}
+  const batch=await dbGet('batches',id);
+  if (!batch){toast('BATCH NOT FOUND','error');navigate('batches');return;}
+  setTitle('BATCH', true, `<button class="action-btn" onclick="navigate('range-card/${id}')">${ICONS.range} RANGE</button>`);
+  document.getElementById('back-btn').onclick=()=>navigate('batches');
+  render(`
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab(this,'tab-recipe')">Recipe</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-load')">Load Table</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-chrono')">Chrono</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-drop')">Drop Table</button>
+    </div>
+    <div class="tab-content active" id="tab-recipe"></div>
+    <div class="tab-content" id="tab-load"></div>
+    <div class="tab-content" id="tab-chrono"></div>
+    <div class="tab-content" id="tab-drop"></div>
+  `);
+  renderRecipeTab(batch);
+  renderLoadTable(batch);
+  renderChronoTab(batch);
+  renderDropTab(batch);
+};
+window.switchTab = (btn,tabId) => {
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+};
+
+function renderRecipeTab(batch) {
+  const el=document.getElementById('tab-recipe'); if (!el) return;
+  el.innerHTML=`
+    <div class="card"><div class="card-header"><div class="marker"></div><h3>Load Recipe</h3></div><div class="card-body">
+      <div class="data-grid three" style="margin-bottom:12px">
+        <div class="data-item"><label>Firearm</label><div class="val">${batch.firearm_id||'—'}</div></div>
+        <div class="data-item"><label>Type</label><div class="val" style="font-size:14px">${batch.load_dev_type||'—'}</div></div>
+        <div class="data-item"><label>Loaded</label><div class="val" style="font-size:14px">${fmtDate(batch.loaded_date)}</div></div>
+      </div>
+      <div class="data-grid" style="margin-bottom:12px">
+        <div class="data-item"><label>Bullet</label><div class="val">${batch.bullet||'—'}</div></div>
+        <div class="data-item"><label>Powder</label><div class="val">${batch.powder||'—'}</div></div>
+      </div>
+      <div class="data-grid" style="margin-bottom:12px">
+        <div class="data-item"><label>Primer</label><div class="val">${batch.primer||'—'}</div></div>
+        <div class="data-item"><label>Case</label><div class="val">${batch.case_brand||'—'}</div></div>
+      </div>
+      <div class="divider"></div>
+      <div class="data-grid three">
+        <div class="data-item"><label>Charge (gr)</label><div class="val big">${batch.charge_fixed!=null?batch.charge_fixed:batch.charge_min!=null?`${batch.charge_min}–${batch.charge_max}`:'—'}</div></div>
+        <div class="data-item"><label>COAL (in)</label><div class="val big">${fmt(batch.coal,3)}</div></div>
+        <div class="data-item"><label>Jump (in)</label><div class="val big">${fmt(batch.jump,3)}</div></div>
+      </div>
+      ${batch.rds_source?`<div class="divider"></div><div class="data-grid three">
+        <div class="data-item"><label>RDS Source</label><div class="val" style="font-size:14px">${batch.rds_source}</div></div>
+        <div class="data-item"><label>RDS Barrel</label><div class="val" style="font-size:14px">${batch.rds_barrel_length?batch.rds_barrel_length+'"':'—'}</div></div>
+        <div class="data-item"><label>RDS Velo</label><div class="val" style="font-size:14px;font-family:'Share Tech Mono',monospace">${batch.rds_velo_min||'—'}–${batch.rds_velo_max||'—'}</div></div>
+      </div>`:''}
+      ${batch.notes?`<div class="divider"></div><p style="font-size:14px;color:var(--muted2);font-family:'Share Tech Mono',monospace;line-height:1.5">// ${batch.notes}</p>`:''}
+    </div></div>
+    <div class="btn-group">
+      ${mkBtnSm('EDIT BATCH','btn-secondary',`navigate('batches/edit/${batch.id}')`, 'edit')}
+      ${mkBtnSm('DELETE','btn-danger',`deleteBatch('${batch.id}')`, 'trash')}
+    </div>`;
+}
+
+function renderLoadTable(batch) {
+  const el=document.getElementById('tab-load'); if (!el) return;
+  const cartridges=generateCartridges(batch);
+  const loaded=cartridges.filter(c=>c.loaded).length, total=cartridges.length;
+  const pct=total>0?Math.round(loaded/total*100):0;
+  const isGrouped=batch.group_mode&&batch.group_mode!=='none';
+  let rows='', lastGroup=null;
+  cartridges.forEach((c,i)=>{
+    if (isGrouped&&c.group_label&&c.group_label!==lastGroup) {
+      rows+=`<tr class="group-header-row"><td colspan="6"><div class="group-header-label">${c.group_label}</div><div class="group-header-params">${c.charge!=null?c.charge+' gr':''}${c.coal!=null?' · COAL '+fmt(c.coal,3)+'"':''}${c.jump!=null?' · JUMP '+fmt(c.jump,3)+'"':''}</div></td></tr>`;
+      lastGroup=c.group_label;
+    }
+    rows+=`<tr id="lt-row-${i}" class="${c.loaded?'lt-done-row':''}">
+      <td class="lt-done"><label class="lt-checkbox"><input type="checkbox" ${c.loaded?'checked':''} onchange="toggleLoaded('${batch.id}',${i},this.checked)"><span class="lt-checkmark"></span></label></td>
+      <td class="lt-num">${c.num}</td>
+      <td class="lt-charge">${c.charge!=null?c.charge:'—'}</td>
+      <td style="font-family:'Share Tech Mono',monospace;font-size:14px">${c.coal!=null?fmt(c.coal,3):'—'}</td>
+      <td style="font-family:'Share Tech Mono',monospace;font-size:14px">${c.jump!=null?fmt(c.jump,3):'—'}</td>
+      <td><input class="lt-note-input" placeholder="notes..." value="${c.notes||''}" onblur="saveCartridgeNote('${batch.id}',${i},this.value)"></td>
+    </tr>`;
+  });
+  el.innerHTML=`
+    <div class="card" style="margin-bottom:12px"><div class="card-header"><div class="marker"></div><h3>Batch Status</h3></div><div class="card-body">
+      <div class="stat-grid">
+        <div class="stat-box"><div class="s-label">Total</div><div class="s-val">${total}</div></div>
+        <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">Loaded</div><div class="s-val" style="color:var(--success)">${loaded}</div></div>
+        <div class="stat-box" style="border-top-color:${total-loaded>0?'var(--accent)':'var(--success)'}"><div class="s-label">Remaining</div><div class="s-val" style="color:${total-loaded>0?'var(--accent)':'var(--success)'}">${total-loaded}</div></div>
+      </div>
+      <div style="margin-top:12px;background:var(--surface2);border:1px solid var(--border);height:8px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:var(--success);transition:width .3s"></div>
+      </div>
+    </div></div>
+    <div class="btn-group" style="margin-bottom:12px">
+      ${mkBtnSm('RESET','btn-secondary',`resetLoadTable('${batch.id}')`, 'reset')}
+      ${mkBtnSm('ALL LOADED','btn-secondary',`checkAllLoaded('${batch.id}')`, 'check')}
+    </div>
+    <div class="card"><div class="card-header"><div class="marker"></div><h3>Bench Reference</h3><div class="hdr-tag">${batch.bullet||'—'} · ${batch.powder||'—'}</div></div>
+      <div style="overflow-x:auto"><table class="load-bench-table">
+        <thead><tr><th></th><th>#</th><th>Charge</th><th>COAL"</th><th>Jump"</th><th>Notes</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+}
+
+window.toggleLoaded = async (batchId,idx,checked) => {
+  const batch=await dbGet('batches',batchId);
+  if (!batch.cartridges) batch.cartridges=generateCartridges(batch);
+  batch.cartridges[idx]=batch.cartridges[idx]||{}; batch.cartridges[idx].loaded=checked;
+  await dbPut('batches',batch);
+  const row=document.getElementById(`lt-row-${idx}`); if (row) row.className=checked?'lt-done-row':'';
+};
+window.saveCartridgeNote = async (batchId,idx,val) => {
+  const batch=await dbGet('batches',batchId);
+  if (!batch.cartridges) batch.cartridges=generateCartridges(batch);
+  batch.cartridges[idx]=batch.cartridges[idx]||{}; batch.cartridges[idx].notes=val.trim();
+  await dbPut('batches',batch);
+};
+window.resetLoadTable = async batchId => {
+  if (!confirm_('Reset all checkboxes?')) return;
+  const batch=await dbGet('batches',batchId);
+  batch.cartridges=generateCartridges(batch).map(c=>({...c,loaded:false}));
+  await dbPut('batches',batch); renderLoadTable(batch); toast('RESET');
+};
+window.checkAllLoaded = async batchId => {
+  const batch=await dbGet('batches',batchId);
+  if (!batch.cartridges) batch.cartridges=generateCartridges(batch);
+  batch.cartridges.forEach(c=>c.loaded=true);
+  await dbPut('batches',batch); renderLoadTable(batch); toast('ALL MARKED LOADED','success');
+};
+
+function renderChronoTab(batch) {
+  const el=document.getElementById('tab-chrono'); if (!el) return;
+  const shots=batch.shots||[], validShots=shots.filter(s=>s.velocity>0);
+  const stats=validShots.length?calcStats(validShots.map(s=>s.velocity)):null;
+  el.innerHTML=validShots.length?`
+    <div class="stat-grid" style="margin-bottom:14px">
+      <div class="stat-box hi"><div class="s-label">AVG</div><div class="s-val">${Math.round(stats.avg)}</div><div class="s-unit">FPS</div></div>
+      <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" style="color:var(--success)">${fmt(stats.sd,1)}</div><div class="s-unit">FPS</div></div>
+      <div class="stat-box"><div class="s-label">ES</div><div class="s-val">${fmt(stats.es,1)}</div><div class="s-unit">FPS</div></div>
+    </div>
+    <div class="card"><div class="card-header"><div class="marker"></div><h3>Shot Data</h3>${mkBtnSm('CLEAR','btn-secondary',`clearShots('${batch.id}')`, 'trash')}</div>
+      <div style="padding:0 0 4px"><table class="shot-table">
+        <thead><tr><th>#</th><th>FPS</th><th>Δ AVG</th><th>Notes</th></tr></thead>
+        <tbody>${shots.map((s,i)=>{if(!s.velocity)return''; const d=stats?s.velocity-stats.avg:0; return `<tr><td>${i+1}</td><td style="font-weight:700;color:var(--text)">${Math.round(s.velocity)}</td><td class="${d>=0?'delta-pos':'delta-neg'}">${d>=0?'+':''}${fmt(d,1)}</td><td style="font-size:12px;color:var(--muted2)">${s.field_notes||''}</td></tr>`; }).join('')}</tbody>
+      </table></div>
+    </div>` :
+    `<p class="text-muted" style="font-size:14px;margin-bottom:16px;font-family:'Share Tech Mono',monospace">// NO VELOCITY DATA — USE RANGE CARD TO RECORD SHOTS</p>`;
+  el.innerHTML+=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>
+    ${batch.range_date?`<p class="text-muted" style="font-size:12px;margin-top:10px;font-family:'Share Tech Mono',monospace">// RANGE DATE: ${fmtDate(batch.range_date)}</p>`:''}`;
+}
+window.clearShots = async batchId => {
+  if (!confirm_('Clear all shot data?')) return;
+  const batch=await dbGet('batches',batchId);
+  batch.shots=[]; batch.range_date=null;
+  await dbPut('batches',batch); renderChronoTab(batch); toast('SHOTS CLEARED');
+};
+
+async function renderDropTab(batch) {
+  const el=document.getElementById('tab-drop'); if (!el) return;
+  const stats=batch.shots?.length?calcStats(batch.shots.filter(s=>s.velocity>0).map(s=>s.velocity)):null;
+  const inv=await getBulletData(batch.bullet);
+  const rBC=batch.bc_g1||inv.bc_g1||null, rWt=batch.bullet_weight_gr||inv.bullet_weight_gr||null;
+  el.innerHTML=`
+    <div class="section-title">Environmental</div>
+    <div class="env-strip">
+      <div><label>Temp °F</label><input type="number" id="env-temp" value="${batch.range_conditions?.temp_f||59}"></div>
+      <div><label>Alt ft</label><input type="number" id="env-alt" value="${batch.range_conditions?.elevation||0}"></div>
+      <div><label>Humidity %</label><input type="number" id="env-hum" value="${batch.range_conditions?.humidity||50}"></div>
+    </div>
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="form-group"><label>Zero (yds)</label><input class="form-control" id="env-zero" type="number" value="100"></div>
+      <div class="form-group"><label>MV (fps)</label><input class="form-control" id="env-mv" type="number" value="${stats?Math.round(stats.avg):''}" placeholder="from chrono"></div>
+    </div>
+    <div class="form-row" style="margin-bottom:14px">
+      <div class="form-group"><label>BC G1</label><input class="form-control" id="drop-bc" type="number" step="0.001" value="${rBC||''}"></div>
+      <div class="form-group"><label>Bullet Wt (gr)</label><input class="form-control" id="drop-wt" type="number" step="0.1" value="${rWt||''}"></div>
+    </div>
+    ${mkBtn('COMPUTE DROP TABLE','btn-primary',`recomputeDrop('${batch.id}')`, '')}
+    <div id="drop-table-result" style="margin-top:14px"></div>`;
+}
+window.recomputeDrop = async batchId => {
+  const batch=await dbGet('batches',batchId), inv=await getBulletData(batch.bullet);
+  const stats=batch.shots?.length?calcStats(batch.shots.filter(s=>s.velocity>0).map(s=>s.velocity)):null;
+  const mv=parseFloat(document.getElementById('env-mv').value)||stats?.avg;
+  const bc=parseFloat(document.getElementById('drop-bc')?.value)||batch.bc_g1||inv.bc_g1;
+  const wt=parseFloat(document.getElementById('drop-wt')?.value)||batch.bullet_weight_gr||inv.bullet_weight_gr;
+  const temp=parseFloat(document.getElementById('env-temp').value)||59;
+  const alt=parseFloat(document.getElementById('env-alt').value)||0;
+  const hum=parseFloat(document.getElementById('env-hum').value)||50;
+  const zero=parseFloat(document.getElementById('env-zero').value)||100;
+  if (!mv||!bc||!wt){document.getElementById('drop-table-result').innerHTML=`<p style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--muted2)">// ENTER MV, BC G1, AND BULLET WEIGHT TO COMPUTE</p>`;return;}
+  const rows=computeDropTable(mv,bc,wt,temp,alt,hum,zero);
+  if (!rows?.length){document.getElementById('drop-table-result').innerHTML=`<p style="color:var(--danger)">// COMPUTATION FAILED — CHECK INPUTS</p>`;return;}
+  document.getElementById('drop-table-result').innerHTML=`
+    <div class="card"><div class="card-header"><div class="marker"></div><h3>Ballistic Drop Table</h3><div class="hdr-tag">ZERO: ${zero} YDS</div></div>
+      <div style="overflow-x:auto"><table class="drop-table">
+        <thead><tr><th>Range</th><th>Vel</th><th>Drop"</th><th>MOA</th><th>ft·lb</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr class="${r.range===zero?'zero-row':''}"><td>${r.range} yd</td><td>${r.velocity}</td><td>${r.drop_from_zero!=null?fmt(r.drop_from_zero,1):'—'}</td><td>${r.moa!=null?fmt(r.moa,2):'—'}</td><td>${r.energy}</td></tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px;font-family:'Share Tech Mono',monospace">// BC G1: ${bc} · MV: ${Math.round(mv)} FPS · ${wt} GR · ${temp}°F / ${alt}FT / ${hum}%RH</p>`;
+};
+window.deleteBatch = async batchId => {
+  if (!confirm_(`Delete batch ${batchId}?`)) return;
+  await dbDelete('batches',batchId); toast('DELETED'); navigate('batches');
+};
+
+// ════════════════════════════════════════════════════
+//  RANGE CARD
+// ════════════════════════════════════════════════════
+let _rcSession = { batchId:null, cartridges:[], shots:[] };
+
+routes['range-card'] = async ({id}) => {
+  if (!id){navigate('batches');return;}
+  const batch=await dbGet('batches',id);
+  if (!batch){toast('BATCH NOT FOUND','error');navigate('batches');return;}
+  const firearms=await dbGetAll('firearms');
+
+  setTitle('RANGE CARD', true, `<button class="action-btn" onclick="commitRangeSession('${id}')">${ICONS.save} SAVE</button>`);
+  document.getElementById('back-btn').onclick=()=>{ if (confirm_('Leave? Unsaved changes will be lost.')) navigate('batch/'+id); };
+
+  const cartridges=generateCartridges(batch);
+  const existingShots=batch.shots||[];
+  const isGrouped=batch.group_mode&&batch.group_mode!=='none';
+
+  // Init session
+  _rcSession = {
+    batchId: id,
+    cartridges,
+    shots: cartridges.map((_,i)=>{ const e=(batch.shots||[])[i]; return {velocity:e?.velocity||0,field_notes:e?.field_notes||''}; }),
+  };
+
+  const fOpts=firearms.map(f=>{const bl=f.barrel_length?(f.barrel_length+'in'):'?in';return `<option value="${f.name}" ${f.name===batch.firearm_id?'selected':''}>${f.name} (${bl})</option>`;}).join('');
+
+  let shotRowsHtml='', lastGroup=null;
+  cartridges.forEach((c,i)=>{
+    const existing=existingShots[i];
+    const hasVelo=existing&&existing.velocity>0;
+    const veloVal=hasVelo?Math.round(existing.velocity):'';
+    if (isGrouped&&c.group_label&&c.group_label!==lastGroup) {
+      shotRowsHtml+=`<div class="rc-group-header"><div class="rc-group-title">${c.group_label}</div><div class="rc-group-params">${c.charge!=null?c.charge+' gr':''}${c.coal!=null?' · '+fmt(c.coal,3)+'"':''}${c.jump!=null?' · jump '+fmt(c.jump,3)+'"':''}</div></div>`;
+      lastGroup=c.group_label;
+    }
+    shotRowsHtml+=`
+    <div class="rc-shot-row ${hasVelo?'has-velo':''}" id="rc-row-${i}" onclick="openShotDetail('${id}',${i})">
+      <div class="rc-shot-num ${hasVelo?'fired':''}" id="rc-num-${i}">${c.num}</div>
+      <div class="rc-shot-info">
+        <div class="rc-shot-charge">${c.charge!=null?c.charge+' gr':batch.charge_fixed!=null?batch.charge_fixed+' gr':'—'}</div>
+        <div class="rc-shot-sub">${[c.coal!=null?'COAL '+fmt(c.coal,3)+'"':null,c.jump!=null?'JUMP '+fmt(c.jump,3)+'"':null].filter(Boolean).join(' · ')||batch.bullet||''}</div>
+      </div>
+      <div class="rc-shot-right">
+        <div class="rc-velo-display ${hasVelo?'has-val':''}" id="rc-velo-disp-${i}">${veloVal||'—'}</div>
+        <div class="rc-velo-unit">fps</div>
+        <div class="rc-tap-hint">TAP TO ENTER</div>
+      </div>
+    </div>`;
+  });
+
+  render(`
+    <div style="background:var(--surface);border:1px solid var(--border);overflow:hidden">
+
+      <div class="rc-session-header">
+        <h2>${batch.id}</h2>
+        <div class="rc-meta">${batch.load_dev_type}${isGrouped?' · '+batch.group_mode.toUpperCase()+' GROUPS':''} · ${cartridges.length} ROUNDS · ${fmtDate(batch.loaded_date)}</div>
+      </div>
+
+      <!-- Firearm + Date -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border)">
+        <div style="padding:10px 14px;border-right:1px solid var(--border)">
+          <div class="rc-label">Firearm</div>
+          <select class="form-control" id="rc-firearm-sel" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px" onchange="onRangeFirearmChange('${id}')">
+            ${fOpts}
+          </select>
+        </div>
+        <div style="padding:10px 14px">
+          <div class="rc-label">Range Date</div>
+          <input class="form-control" id="rc-range-date" type="date" value="${batch.range_date||new Date().toISOString().slice(0,10)}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+        </div>
+      </div>
+
+      <!-- Recipe strip -->
+      <div class="rc-recipe-strip">
+        <div><div class="rc-label">Bullet</div><div class="rc-val">${batch.bullet||'—'}</div></div>
+        <div><div class="rc-label">Powder</div><div class="rc-val">${batch.powder||'—'}</div></div>
+        <div><div class="rc-label">Primer · Case</div><div class="rc-val" style="font-size:12px">${batch.primer||'—'} · ${batch.case_brand||'—'}</div></div>
+      </div>
+
+      <!-- RDS / Barrel info -->
+      <div class="rc-rds-bar" id="rc-rds-bar"></div>
+
+      <!-- Environmental inputs -->
+      <div class="rc-env-strip">
+        <div class="rc-env-cell">
+          <label>Temp °F</label>
+          <input id="rc-env-temp" type="number" inputmode="numeric" value="${batch.range_conditions?.temp_f||59}">
+        </div>
+        <div class="rc-env-cell">
+          <label>Humidity %</label>
+          <input id="rc-env-hum" type="number" inputmode="numeric" value="${batch.range_conditions?.humidity||50}">
+        </div>
+        <div class="rc-env-cell">
+          <label>Elevation ft</label>
+          <input id="rc-env-elev" type="number" inputmode="numeric" value="${batch.range_conditions?.elevation||0}">
+        </div>
+      </div>
+
+      <!-- Import bar -->
+      <div class="rc-import-bar">
+        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="showRangeCSVImport('${id}')">${ICONS.csv} GARMIN CSV</button>
+        <div style="font-size:10px;color:var(--muted2);text-align:right;flex:1;letter-spacing:1px;font-family:'Share Tech Mono',monospace">TAP ROUND<br>TO ENTER DATA</div>
+      </div>
+
+      <!-- Live stats -->
+      <div class="rc-live-stats" id="rc-live-stats">
+        <div class="stat-grid">
+          <div class="stat-box hi"><div class="s-label">AVG</div><div class="s-val" id="rc-stat-avg">—</div><div class="s-unit">FPS</div></div>
+          <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" id="rc-stat-sd" style="color:var(--success)">—</div><div class="s-unit">FPS</div></div>
+          <div class="stat-box"><div class="s-label">ES</div><div class="s-val" id="rc-stat-es">—</div><div class="s-unit">FPS</div></div>
+        </div>
+      </div>
+
+      <!-- Shot rows -->
+      <div id="rc-shot-rows">${shotRowsHtml}</div>
+
+      <!-- Commit -->
+      <div class="rc-commit-bar">
+        ${mkBtn('SAVE TO BATCH','btn-primary',`commitRangeSession('${id}')`, 'save')}
+      </div>
+
+    </div>
+  `);
+
+  const fa = firearms.find(f=>f.name===batch.firearm_id)||null;
+  updateRangeRDSBar(batch, fa);
+  updateRangeLiveStats();
+};
+
+function updateRangeRDSBar(batch, firearm) {
+  const el=document.getElementById('rc-rds-bar'); if (!el) return;
+  const rdsBarrel=batch.rds_barrel_length, faBarrel=firearm?.barrel_length;
+  const diff=faBarrel&&rdsBarrel?(faBarrel-rdsBarrel):null;
+  const adjLabel=diff!=null?`${diff>=0?'+':''}${diff}" (${diff>=0?'+':''}${Math.round(diff*25)} fps)`:'—';
+  el.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap">
+    <div><div class="rc-label">RDS Source</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-top:2px;font-family:'Share Tech Mono',monospace">${batch.rds_source||'—'}</div></div>
+    <div><div class="rc-label">RDS Barrel</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-top:2px;font-family:'Share Tech Mono',monospace">${rdsBarrel?rdsBarrel+'"':'—'}</div></div>
+    <div><div class="rc-label">Your Barrel</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-top:2px;font-family:'Share Tech Mono',monospace">${faBarrel?faBarrel+'"':'—'}</div></div>
+    <div><div class="rc-label">Barrel Adj</div><div style="font-size:13px;font-weight:700;margin-top:2px;font-family:'Share Tech Mono',monospace;color:${diff!=null?(diff>=0?'var(--success)':'var(--danger)'):'var(--muted2)'}">${adjLabel}</div></div>
+  </div>`;
+}
+window.onRangeFirearmChange = async batchId => {
+  const batch=await dbGet('batches',batchId);
+  const sel=document.getElementById('rc-firearm-sel'); if (!sel) return;
+  const firearms=await dbGetAll('firearms');
+  updateRangeRDSBar(batch, firearms.find(f=>f.name===sel.value)||null);
+};
+
+// ── Shot Detail ──
+window.openShotDetail = async (batchId, idx) => {
+  const batch=await dbGet('batches',batchId);
+  const firearms=await dbGetAll('firearms');
+  const sel=document.getElementById('rc-firearm-sel');
+  const firearm=sel?firearms.find(f=>f.name===sel.value)||null:firearms.find(f=>f.name===batch.firearm_id)||null;
+  const cartridges=generateCartridges(batch);
+  const c=cartridges[idx];
+  const shot=_rcSession.shots[idx]||{velocity:0,field_notes:''};
+  const hasVelo=shot.velocity>0;
+  const bv=bookVeloForRound(batch,c);
+  const av=adjVelo(batch,firearm,bv);
+  const liveVelos=_rcSession.shots.map(s=>s.velocity).filter(v=>v>0);
+  const stats=liveVelos.length?calcStats(liveVelos):null;
+  const delta=stats&&hasVelo?shot.velocity-stats.avg:null;
+  const total=cartridges.length;
+  const hasPrev=idx>0, hasNext=idx<total-1;
+  const isGrouped=batch.group_mode&&batch.group_mode!=='none';
+
+  document.getElementById('shot-detail-overlay')?.remove();
+  const overlay=document.createElement('div');
+  overlay.className='shot-detail-overlay'; overlay.id='shot-detail-overlay';
+  overlay.innerHTML=`
+    <div class="shot-detail-header">
+      <span class="close-btn" onclick="closeShotDetail()">✕</span>
+      <div class="det-title">RND ${c.num} / ${total}</div>
+      <span class="nav-arrow ${!hasPrev?'disabled':''}" onclick="navShotDetail(${idx-1})">‹</span>
+      <span class="nav-arrow ${!hasNext?'disabled':''}" onclick="navShotDetail(${idx+1})">›</span>
+    </div>
+
+    <div class="shot-detail-body">
+
+      <div class="det-velo-wrap ${hasVelo?'filled':''}" id="det-velo-wrap">
+        <div class="det-velo-label">Chronograph Velocity</div>
+        <input class="det-velo-input ${hasVelo?'filled':''}" id="det-velo-input" type="number" inputmode="numeric" step="1"
+          placeholder="0000" value="${hasVelo?Math.round(shot.velocity):''}"
+          oninput="onDetVeloInput(${idx})"
+          onfocus="document.getElementById('det-velo-wrap').classList.add('active')"
+          onblur="document.getElementById('det-velo-wrap').classList.remove('active')">
+        <div class="det-velo-fps">FPS</div>
+      </div>
+
+      <div class="det-notes-wrap">
+        <div class="det-notes-label">Field Notes</div>
+        <textarea class="det-notes-input" id="det-notes-input" placeholder="Primer pocket, case condition, felt recoil, group location...">${shot.field_notes||''}</textarea>
+      </div>
+
+      <div class="det-section">
+        <div class="det-section-head">Round Makeup</div>
+        ${isGrouped?`<div class="det-row"><div class="det-row-label">Group</div><div class="det-row-val accent">${c.group_label||'—'}</div></div>`:''}
+        <div class="det-row"><div class="det-row-label">Round</div><div class="det-row-val">${c.num}<span class="det-unit">of ${total}</span></div></div>
+        <div class="det-row"><div class="det-row-label">Charge</div><div class="det-row-val accent">${c.charge!=null?c.charge:batch.charge_fixed||'—'}<span class="det-unit">gr</span></div></div>
+        ${c.coal!=null?`<div class="det-row"><div class="det-row-label">COAL</div><div class="det-row-val">${fmt(c.coal,3)}<span class="det-unit">in</span></div></div>`:''}
+        ${c.jump!=null?`<div class="det-row"><div class="det-row-label">Jump</div><div class="det-row-val">${fmt(c.jump,3)}<span class="det-unit">in</span></div></div>`:''}
+        <div class="det-row"><div class="det-row-label">Bullet</div><div class="det-row-val" style="font-size:16px">${batch.bullet||'—'}</div></div>
+        <div class="det-row"><div class="det-row-label">Powder</div><div class="det-row-val" style="font-size:16px">${batch.powder||'—'}</div></div>
+        <div class="det-row"><div class="det-row-label">Primer</div><div class="det-row-val" style="font-size:16px">${batch.primer||'—'}</div></div>
+        <div class="det-row"><div class="det-row-label">Case</div><div class="det-row-val" style="font-size:16px">${batch.case_brand||'—'}</div></div>
+      </div>
+
+      <div class="det-section">
+        <div class="det-section-head">Reference Velocities</div>
+        <div class="det-row">
+          <div class="det-row-label">Book Velo</div>
+          <div class="det-row-val info">${bv!=null?bv:'—'}<span class="det-unit">fps</span></div>
+        </div>
+        <div class="det-row">
+          <div class="det-row-label">ADJ Velo<br><span style="font-size:10px;color:var(--muted);letter-spacing:.5px;font-weight:600;text-transform:none">${firearm?.barrel_length&&batch.rds_barrel_length?firearm.barrel_length+'" vs '+batch.rds_barrel_length+'" RDS':'barrel data missing'}</span></div>
+          <div class="det-row-val ${av!=null?(av>=(bv||0)?'success':'danger'):''}">
+            ${av!=null?av:'—'}<span class="det-unit">fps</span>
+          </div>
+        </div>
+        ${hasVelo?`
+        <div class="det-row"><div class="det-row-label">Actual</div><div class="det-row-val success">${Math.round(shot.velocity)}<span class="det-unit">fps</span></div></div>
+        ${av!=null?`<div class="det-row"><div class="det-row-label">vs ADJ Velo</div><div class="det-row-val ${shot.velocity-av>=0?'success':'danger'}">${shot.velocity-av>=0?'+':''}${Math.round(shot.velocity-av)}<span class="det-unit">fps</span></div></div>`:''}
+        ${delta!=null?`<div class="det-row"><div class="det-row-label">Δ Session Avg</div><div class="det-row-val ${delta>=0?'success':'danger'}">${delta>=0?'+':''}${fmt(delta,1)}<span class="det-unit">fps</span></div></div>`:''}
+        `:''}
+      </div>
+
+      ${stats?`<div class="det-section">
+        <div class="det-section-head">Session Stats (${liveVelos.length} shots)</div>
+        <div class="det-row"><div class="det-row-label">AVG</div><div class="det-row-val accent">${Math.round(stats.avg)}<span class="det-unit">fps</span></div></div>
+        <div class="det-row"><div class="det-row-label">SD</div><div class="det-row-val">${fmt(stats.sd,1)}<span class="det-unit">fps</span></div></div>
+        <div class="det-row"><div class="det-row-label">ES</div><div class="det-row-val">${fmt(stats.es,1)}<span class="det-unit">fps</span></div></div>
+      </div>`:''}
+
+    </div>
+
+    <div class="shot-detail-footer">
+      <div class="btn-group">
+        <button class="btn btn-primary" style="flex:2" onclick="saveShotDetail(${idx})">${ICONS.save} SAVE & CLOSE</button>
+        ${hasNext?`<button class="btn btn-secondary" style="flex:1" onclick="saveShotDetailAndNext(${idx})">NEXT ›</button>`:''}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(()=>document.getElementById('det-velo-input')?.focus(),100);
+  window._currentDetailIdx=idx;
+  window._currentDetailBatchId=batchId;
+  window._currentDetailBatch=batch;
+  window._currentDetailCartridges=cartridges;
+};
+
+window.onDetVeloInput = idx => {
+  const input=document.getElementById('det-velo-input'); if (!input) return;
+  const v=parseFloat(input.value), hasVal=!isNaN(v)&&v>0;
+  input.classList.toggle('filled',hasVal);
+  document.getElementById('det-velo-wrap')?.classList.toggle('filled',hasVal);
+  if (!_rcSession.shots[idx]) _rcSession.shots[idx]={velocity:0,field_notes:''};
+  _rcSession.shots[idx].velocity=hasVal?v:0;
+  updateRangeLiveStats();
+};
+
+function _saveShotDetailToSession(idx) {
+  const veloEl=document.getElementById('det-velo-input');
+  const notesEl=document.getElementById('det-notes-input');
+  if (!_rcSession.shots[idx]) _rcSession.shots[idx]={velocity:0,field_notes:''};
+  if (veloEl){const v=parseFloat(veloEl.value);_rcSession.shots[idx].velocity=(!isNaN(v)&&v>0)?v:0;}
+  if (notesEl) _rcSession.shots[idx].field_notes=notesEl.value.trim();
+  const v=_rcSession.shots[idx].velocity;
+  const disp=document.getElementById(`rc-velo-disp-${idx}`);
+  const numEl=document.getElementById(`rc-num-${idx}`);
+  const rowEl=document.getElementById(`rc-row-${idx}`);
+  if (disp){disp.textContent=v>0?Math.round(v):'—';disp.classList.toggle('has-val',v>0);}
+  if (numEl) numEl.classList.toggle('fired',v>0);
+  if (rowEl) rowEl.classList.toggle('has-velo',v>0);
+}
+window.navShotDetail = newIdx => { _saveShotDetailToSession(window._currentDetailIdx); updateRangeLiveStats(); document.getElementById('shot-detail-overlay')?.remove(); openShotDetail(window._currentDetailBatchId,newIdx); };
+window.saveShotDetail = idx => { _saveShotDetailToSession(idx); updateRangeLiveStats(); document.getElementById('shot-detail-overlay')?.remove(); };
+window.saveShotDetailAndNext = idx => { _saveShotDetailToSession(idx); updateRangeLiveStats(); document.getElementById('shot-detail-overlay')?.remove(); if (idx+1<(window._currentDetailCartridges?.length||0)) openShotDetail(window._currentDetailBatchId,idx+1); };
+window.closeShotDetail = () => { if (window._currentDetailIdx!=null) _saveShotDetailToSession(window._currentDetailIdx); updateRangeLiveStats(); document.getElementById('shot-detail-overlay')?.remove(); };
+
+function updateRangeLiveStats() {
+  const velos=(_rcSession.shots||[]).map(s=>s.velocity).filter(v=>v>0);
+  const avgEl=document.getElementById('rc-stat-avg'), sdEl=document.getElementById('rc-stat-sd'), esEl=document.getElementById('rc-stat-es');
+  if (!velos.length){if(avgEl)avgEl.textContent='—';if(sdEl)sdEl.textContent='—';if(esEl)esEl.textContent='—';return;}
+  const s=calcStats(velos);
+  if(avgEl)avgEl.textContent=Math.round(s.avg);
+  if(sdEl) sdEl.textContent=fmt(s.sd,1);
+  if(esEl) esEl.textContent=fmt(s.es,1);
+}
+
+window.commitRangeSession = async batchId => {
+  const batch=await dbGet('batches',batchId);
+  const cartridges=generateCartridges(batch);
+  const shots=cartridges.map((_,i)=>{
+    const s=_rcSession.shots[i]||{velocity:0,field_notes:''};
+    const c=cartridges[i];
+    const shot={velocity:s.velocity||0,field_notes:s.field_notes||''};
+    if (c.charge!=null) shot.charge=c.charge;
+    return shot;
+  });
+  const validShots=shots.filter(s=>s.velocity>0);
+  if (!validShots.length){toast('NO VELOCITIES ENTERED','error');return;}
+  const rangeDate=document.getElementById('rc-range-date')?.value||new Date().toISOString().slice(0,10);
+  const sel=document.getElementById('rc-firearm-sel'); if (sel&&sel.value) batch.firearm_id=sel.value;
+  batch.range_conditions={
+    temp_f:    parseFloat(document.getElementById('rc-env-temp')?.value)||59,
+    humidity:  parseFloat(document.getElementById('rc-env-hum')?.value)||50,
+    elevation: parseFloat(document.getElementById('rc-env-elev')?.value)||0,
+  };
+  batch.shots=shots; batch.range_date=rangeDate;
+  await dbPut('batches',batch);
+  _rcSession={batchId:null,cartridges:[],shots:[]};
+  toast(`${validShots.length} SHOTS SAVED`,'success');
+  if (batch.case_brand) promptFireCount(batch.case_brand);
+  navigate('batch/'+batchId);
+};
+
+window.showRangeCSVImport = batchId => {
+  document.body.insertAdjacentHTML('beforeend',`
+    <div class="overlay" id="rc-csv-overlay" onclick="if(event.target===this)this.remove()">
+      <div class="modal"><div class="modal-handle"></div>
+        <h3>Import Garmin CSV</h3>
+        <p style="font-size:14px;color:var(--muted2);margin-bottom:16px;font-family:'Share Tech Mono',monospace">// Paste Garmin Xero Pro C1 export. Velocities fill rounds in order.</p>
+        <div class="form-group"><label>CSV Data</label><textarea class="form-control" id="rc-csv-text" style="min-height:160px;font-family:'Share Tech Mono',monospace;font-size:12px" placeholder="SHOT #,SPEED (FPS),..."></textarea></div>
+        <div class="btn-group">
+          ${mkBtn('APPLY TO CARD','btn-primary',`applyGarminCSVToCard('${batchId}')`, 'csv')}
+          ${mkBtn('CANCEL','btn-secondary',"document.getElementById('rc-csv-overlay').remove()")}
+        </div>
+      </div>
+    </div>`);
+};
+window.applyGarminCSVToCard = async batchId => {
+  const text=document.getElementById('rc-csv-text').value;
+  const shots=parseGarminCSV(text);
+  if (!shots.length){toast('NO VALID SHOT DATA FOUND','error');return;}
+  shots.forEach((s,i)=>{
+    if (i>=_rcSession.shots.length) return;
+    _rcSession.shots[i].velocity=s.velocity;
+    const disp=document.getElementById(`rc-velo-disp-${i}`);
+    if (disp){disp.textContent=Math.round(s.velocity);disp.classList.add('has-val');}
+    document.getElementById(`rc-num-${i}`)?.classList.add('fired');
+    document.getElementById(`rc-row-${i}`)?.classList.add('has-velo');
+  });
+  document.getElementById('rc-csv-overlay').remove();
+  updateRangeLiveStats();
+  toast(`${shots.length} SHOTS LOADED`,'success');
+};
+
+// ── Fire count prompt ──
+async function promptFireCount(caseBrand) {
+  const comps=await dbGetAll('components');
+  const cc=comps.find(c=>c.type==='case'&&c.name===caseBrand); if (!cc) return;
+  const cur=cc.fire_count??0;
+  document.body.insertAdjacentHTML('beforeend',`
+    <div class="overlay" id="fc-prompt" onclick="if(event.target===this)this.remove()">
+      <div class="modal"><div class="modal-handle"></div>
+        <h3>Update Case Fire Count?</h3>
+        <p style="font-size:15px;color:var(--muted2);margin-bottom:20px;font-family:'Share Tech Mono',monospace">
+          ${caseBrand} // CURRENTLY ${cur} FIRE${cur!==1?'S':''}<br>INCREMENT TO ${cur+1}?
+        </p>
+        ${cur+1>=5?`<div class="fire-badge" style="margin-bottom:16px">${ICONS.warn} ${cur+1} FIRES — ANNEAL / INSPECT</div>`:''}
+        ${cur+1>=3&&cur+1<5?`<div class="fire-badge" style="margin-bottom:16px;color:var(--accent);border-color:rgba(79,195,247,.3);background:rgba(79,195,247,.08)">${ICONS.warn} ${cur+1} FIRES — CHECK NECKS</div>`:''}
+        <div class="btn-group">
+          ${mkBtn('YES, INCREMENT','btn-primary',`confirmFireCount(${cc.id})`,'check')}
+          ${mkBtn('SKIP','btn-secondary',"document.getElementById('fc-prompt').remove()")}
+        </div>
+      </div>
+    </div>`);
+}
+window.confirmFireCount = async id => {
+  const c=await dbGet('components',id); c.fire_count=(c.fire_count??0)+1; await dbPut('components',c);
+  document.getElementById('fc-prompt')?.remove();
+  toast(`FIRE COUNT: ${c.fire_count}${c.fire_count>=5?' — ANNEAL':c.fire_count>=3?' — CHECK NECKS':''}`, c.fire_count>=5?'error':'success');
+};
+
+// ════════════════════════════════════════════════════
+//  IMPORT / EXPORT
+// ════════════════════════════════════════════════════
+register('import', () => {
+  setTitle('SYNC', false);
+  render(`
+    <div class="section-title">Device Sync</div>
+    <div class="card" style="margin-bottom:14px"><div class="card-header"><div class="marker"></div><h3>Export</h3></div><div class="card-body">
+      <p style="font-size:14px;color:var(--muted2);margin-bottom:14px;font-family:'Share Tech Mono',monospace">// Export all data as JSON for backup or device sync.</p>
+      ${mkBtn('EXPORT ALL DATA','btn-primary','exportData()','export')}
+    </div></div>
+    <div class="card" style="margin-bottom:20px"><div class="card-header"><div class="marker"></div><h3>Import JSON</h3></div><div class="card-body">
+      <p style="font-size:14px;color:var(--muted2);margin-bottom:14px;font-family:'Share Tech Mono',monospace">// Import a previously exported file. Existing records are never overwritten.</p>
+      <div class="drop-zone" id="json-drop-zone" onclick="document.getElementById('json-file-input').click()">
+        <div style="color:var(--accent)">${ICONS.upload}</div>
+        <p>Tap to select export file</p>
+        <p style="font-size:12px;font-family:'Share Tech Mono',monospace">// .json</p>
+      </div>
+      <input type="file" id="json-file-input" accept=".json" style="display:none" onchange="handleJSONFile(event)">
+    </div></div>
+    <div class="section-title">One-Time Excel Import</div>
+    <div class="card"><div class="card-header"><div class="marker"></div><h3>Spreadsheet Import</h3></div><div class="card-body">
+      <p style="font-size:14px;color:var(--muted2);margin-bottom:14px;font-family:'Share Tech Mono',monospace">// Import your original Reloading Master .xlsx.</p>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <div style="color:var(--accent)">${ICONS.file}</div>
+        <p>Tap to select .xlsx file</p>
+        <p style="font-size:12px;font-family:'Share Tech Mono',monospace">// .xlsx / .xls</p>
+      </div>
+      <input type="file" id="file-input" accept=".xlsx,.xls" style="display:none" onchange="handleFile(event)">
+    </div></div>
+    <div id="import-result" style="margin-top:14px"></div>
+  `);
+  const dz=document.getElementById('drop-zone');
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');handleDroppedFile(e.dataTransfer.files[0]);});
+  const jdz=document.getElementById('json-drop-zone');
+  jdz.addEventListener('dragover',e=>{e.preventDefault();jdz.classList.add('over');});
+  jdz.addEventListener('dragleave',()=>jdz.classList.remove('over'));
+  jdz.addEventListener('drop',e=>{e.preventDefault();jdz.classList.remove('over');handleJSONDroppedFile(e.dataTransfer.files[0]);});
+});
+
+window.exportData = async () => {
+  try {
+    const [firearms,components,batches]=await Promise.all([dbGetAll('firearms'),dbGetAll('components'),dbGetAll('batches')]);
+    const payload={version:2,app:'ReloadingMaster',exported_at:new Date().toISOString(),firearms,components,batches};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const date=new Date().toISOString().slice(0,10), filename=`reloading-master-${date}.json`;
+    if (navigator.share){try{const file=new File([blob],filename,{type:'application/json'});await navigator.share({files:[file],title:'Reloading Master Export'});toast('EXPORTED','success');return;}catch(e){if(e.name==='AbortError')return;}}
+    const url=URL.createObjectURL(blob), a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    toast(`EXPORTED: ${batches.length} BATCHES`,'success');
+  } catch(err){toast('EXPORT FAILED: '+err.message,'error');}
+};
+
+window.handleJSONFile = e => { if (e.target.files[0]) handleJSONDroppedFile(e.target.files[0]); };
+window.handleJSONDroppedFile = file => { if (!file) return; const r=new FileReader(); r.onload=e=>processJSONImport(e.target.result); r.readAsText(file); };
+async function processJSONImport(text) {
+  const result=document.getElementById('import-result'); const log=[];
+  result.innerHTML=`<div class="import-log">// PROCESSING...</div>`;
+  try {
+    const data=JSON.parse(text);
+    if (!data.app||data.app!=='ReloadingMaster'){result.innerHTML=`<div class="import-log"><div class="err">// NOT A VALID EXPORT FILE</div></div>`;return;}
+    let fA=0,fS=0; for (const f of(data.firearms||[])){const ex=await dbGetAll('firearms').then(fs=>fs.find(x=>x.name===f.name));if(ex){fS++;continue;}const{id:_,...r}=f;await dbPut('firearms',r);fA++;}
+    log.push(`<div class="ok">// FIREARMS: ${fA} ADDED, ${fS} SKIPPED</div>`);
+    let cA=0,cS=0; for (const c of(data.components||[])){const ex=await dbGetAll('components').then(cs=>cs.find(x=>x.type===c.type&&x.name===c.name));if(ex){cS++;continue;}const{id:_,...r}=c;await dbPut('components',r);cA++;}
+    log.push(`<div class="ok">// COMPONENTS: ${cA} ADDED, ${cS} SKIPPED</div>`);
+    let bA=0,bS=0; for (const b of(data.batches||[])){const ex=await dbGet('batches',b.id);if(ex){bS++;continue;}await dbPut('batches',b);bA++;}
+    log.push(`<div class="ok">// BATCHES: ${bA} ADDED, ${bS} SKIPPED</div>`);
+    log.push(`<div class="ok">// IMPORT COMPLETE</div>`);
+    result.innerHTML=`<div class="import-log">${log.join('')}</div><div style="margin-top:12px">${mkBtn('GO TO DASHBOARD','btn-primary',"navigate('dashboard')")}</div>`;
+    toast('IMPORT COMPLETE','success');
+  } catch(err){result.innerHTML=`<div class="import-log"><div class="err">// ERROR: ${err.message}</div></div>`;}
+}
+
+window.handleFile = e => { if (e.target.files[0]) handleDroppedFile(e.target.files[0]); };
+window.handleDroppedFile = file => { const r=new FileReader(); r.onload=e=>processXLSX(e.target.result); r.readAsArrayBuffer(file); };
+async function processXLSX(buffer) {
+  const result=document.getElementById('import-result'); const log=[];
+  result.innerHTML=`<div class="import-log">// PROCESSING...</div>`;
+  try {
+    const wb=XLSX.read(buffer,{type:'array'});
+    const faSheet=wb.Sheets['Firearm Data'];
+    if (faSheet){const rows=XLSX.utils.sheet_to_json(faSheet,{defval:null});let n=0;for (const r of rows){const name=r['Firearm ID'];if(!name)continue;const ex=await dbGetAll('firearms').then(fs=>fs.find(f=>f.name===name));if(!ex){await dbPut('firearms',{name:String(name),make_model:String(r['Make/Model']||''),chamber:String(r['Chamber']||''),caliber:String(r['Caliber']||''),barrel_length:parseFloat(r['Barrel Length (in)'])||null,notes:String(r['Notes']||'')});n++;}}log.push(`<div class="ok">// FIREARMS: ${n}</div>`);}
+    const invSheet=wb.Sheets['Inventory'];
+    if (invSheet){const rows=XLSX.utils.sheet_to_json(invSheet,{defval:null});let n=0;const tm={'Bullets':'bullet','Powders':'powder','Primers':'primer','Cases':'case'};for (const r of rows){for (const [col,type] of Object.entries(tm)){const name=r[col];if(!name)continue;const ex=await dbGetAll('components').then(cs=>cs.find(c=>c.type===type&&c.name===String(name)));if(!ex){await dbPut('components',{type,name:String(name),quantity:0,fire_count:0,notes:''});n++;}}}log.push(`<div class="ok">// COMPONENTS: ${n}</div>`);}
+    const batchSheet=wb.Sheets['Batch Data'];
+    if (batchSheet){const rows=XLSX.utils.sheet_to_json(batchSheet,{defval:null});let n=0,s=0;for (const r of rows){const id=r['Batch ID'];if(!id)continue;const ex=await dbGet('batches',String(id));if(ex){s++;continue;}const shots=[];for(let i=1;i<=50;i++){const v=parseFloat(r[`Shot VELO ${i}`]);if(!isNaN(v)&&v>0)shots.push({velocity:v});}await dbPut('batches',{id:String(id),firearm_id:String(r['Firearm ID']||''),bullet:String(r['Bullet']||''),powder:String(r['Powder']||''),primer:String(r['Primer']||''),case_brand:String(r['Case']||''),load_dev_type:String(r['Load Dev Type']||'Validation Batch'),group_mode:'none',cartridge_count:parseInt(r['Cartridge Count'])||10,charge_fixed:parseFloat(r['Charge Fixed'])||null,charge_min:parseFloat(r['Charge Weight Min'])||null,charge_max:parseFloat(r['Charge Weight Max'])||null,coal:parseFloat(r['RDS COAL'])||null,jump:parseFloat(r['Jump Fixed'])||null,rds_source:String(r['Reloading Data Source (RDS)']||''),rds_barrel_length:parseFloat(r['RDS Barrel Length (in)'])||null,rds_velo_min:parseFloat(r['RDS Velo Min'])||null,rds_velo_max:parseFloat(r['RDS Velo Max'])||null,loaded_date:r['Loaded Date']?new Date(r['Loaded Date']).toISOString().slice(0,10):null,range_date:r['Range Date']&&r['Range Date']!=='NaT'?new Date(r['Range Date']).toISOString().slice(0,10):null,shots,bc_g1:null,bullet_weight_gr:null,notes:'',created_at:new Date().toISOString()});n++;}log.push(`<div class="ok">// BATCHES: ${n} IMPORTED, ${s} SKIPPED</div>`);}
+    log.push(`<div class="ok">// IMPORT COMPLETE</div>`);
+    result.innerHTML=`<div class="import-log">${log.join('')}</div><div style="margin-top:12px">${mkBtn('GO TO DASHBOARD','btn-primary',"navigate('dashboard')")}</div>`;
+    toast('IMPORT COMPLETE','success');
+  } catch(err){result.innerHTML=`<div class="import-log"><div class="err">// ERROR: ${err.message}</div></div>`;}
+}
+
+register('404',()=>{
+  setTitle('404',true);
+  render(`<div class="empty-state"><div class="empty-icon">${ICONS.erricon}</div><h3>Page Not Found</h3></div>`);
+});
+
+// ════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════
+openDB().then(()=>{
+  navigate('dashboard');
+  drawNavRifle();
+}).catch(err=>{
+  document.getElementById('view').innerHTML=`<div class="empty-state"><div class="empty-icon">${ICONS.erricon}</div><h3>Database Error</h3><p>${err.message}</p></div>`;
+});
+</script>
+</body>
+</html>
