@@ -1026,18 +1026,7 @@ register('firearms', async () => {
   }, 50);
 });
 
-function drawRifleOnCanvas(canvas, w, h, sx, sy) {
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,w,h);
-  const sprite = RIFLE_SPRITE;
-  const rows=sprite.length, cols=sprite[0].length;
-  const ox=Math.floor((w-cols*sx)/2), oy=Math.floor((h-rows*sy)/2);
-  const pal={1:'#4fc3f7',2:'#90d8f0',3:'#4fc3f7'};
-  for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
-    const v=sprite[r][c]; if (!v) continue;
-    ctx.fillStyle=pal[v]; ctx.fillRect(ox+c*sx,oy+r*sy,sx,sy);
-  }
-}
+
 
 register('firearms/new', ()=>renderFirearmForm(null));
 register('firearms/edit', ({id})=>renderFirearmForm(id));
