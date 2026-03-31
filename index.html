@@ -840,26 +840,41 @@ const mkBtnSm = (label, cls, onclick, icon='') =>
 // ════════════════════════════════════════════════════
 //  BALLISTICS ENGINE
 // ════════════════════════════════════════════════════
+// ── Drag tables ──
 const G1_TABLE = [[0,.2629],[.05,.2558],[.1,.2487],[.15,.2413],[.2,.2336],[.25,.2254],[.3,.2167],[.35,.2076],[.4,.198],[.45,.1882],[.5,.1782],[.55,.168],[.6,.1579],[.65,.1477],[.7,.1373],[.75,.1267],[.8,.116],[.85,.1053],[.9,.1011],[.95,.0979],[1,.1162],[1.05,.1452],[1.1,.1481],[1.15,.1495],[1.2,.1504],[1.25,.1514],[1.3,.1522],[1.35,.153],[1.4,.1537],[1.45,.1545],[1.5,.1551],[1.6,.1565],[1.7,.1579],[1.8,.1594],[1.9,.1607],[2,.1621],[2.5,.1686],[3,.1752],[4,.19],[5,.2049]];
-function g1Cd(m) {
-  if (m<=G1_TABLE[0][0]) return G1_TABLE[0][1];
-  if (m>=G1_TABLE[G1_TABLE.length-1][0]) return G1_TABLE[G1_TABLE.length-1][1];
-  for (let i=1;i<G1_TABLE.length;i++) if (m<=G1_TABLE[i][0]) { const t=(m-G1_TABLE[i-1][0])/(G1_TABLE[i][0]-G1_TABLE[i-1][0]); return G1_TABLE[i-1][1]+t*(G1_TABLE[i][1]-G1_TABLE[i-1][1]); }
-  return .2;
+const G7_TABLE = [[0,.1198],[.05,.1197],[.1,.1196],[.15,.1194],[.2,.1193],[.25,.1194],[.3,.1194],[.35,.1194],[.4,.1193],[.45,.1193],[.5,.1194],[.55,.1193],[.6,.1194],[.65,.1197],[.7,.1202],[.725,.1207],[.75,.1215],[.775,.1226],[.8,.1242],[.825,.1266],[.85,.1306],[.875,.1368],[.9,.1464],[.925,.1660],[.95,.2054],[.975,.2993],[1.0,.3803],[1.025,.4015],[1.05,.4043],[1.075,.4034],[1.1,.4014],[1.125,.3987],[1.15,.3955],[1.2,.3884],[1.25,.3810],[1.3,.3732],[1.35,.3657],[1.4,.3580],[1.5,.3440],[1.55,.3376],[1.6,.3315],[1.65,.3260],[1.7,.3209],[1.75,.3160],[1.8,.3115],[1.85,.3072],[1.9,.3032],[1.95,.2995],[2.0,.2959],[2.05,.2927],[2.1,.2898],[2.15,.2871],[2.2,.2845],[2.25,.2822],[2.3,.2801],[2.35,.2781],[2.4,.2763],[2.45,.2745],[2.5,.2729],[2.6,.2699],[2.7,.2671],[2.8,.2644],[2.9,.2618],[3.0,.2595],[3.1,.2573],[3.2,.2553],[3.3,.2534],[3.4,.2515],[3.5,.2497],[3.6,.2480],[3.7,.2464],[3.8,.2449],[3.9,.2434],[4.0,.2420],[4.2,.2393],[4.4,.2368],[4.6,.2343],[4.8,.2320],[5.0,.2298]];
+
+function interpDrag(table, m) {
+  if (m <= table[0][0]) return table[0][1];
+  if (m >= table[table.length-1][0]) return table[table.length-1][1];
+  for (let i=1;i<table.length;i++) {
+    if (m <= table[i][0]) {
+      const t=(m-table[i-1][0])/(table[i][0]-table[i-1][0]);
+      return table[i-1][1]+t*(table[i][1]-table[i-1][1]);
+    }
+  }
+  return table[0][1];
 }
-function computeDropTable(mv,bc,wt,tempF=59,altFt=0,hum=50,zero=100,maxYds=1000) {
+
+// bcType: 'G1' or 'G7'
+function computeDropTable(mv, bc, wt, tempF=59, altFt=0, hum=50, zero=100, maxYds=1000, intervalYds=100, bcType='G1') {
   if (!mv||!bc||!wt||mv<=0||bc<=0) return null;
+  const table = bcType==='G7' ? G7_TABLE : G1_TABLE;
+  // G7 uses a different form factor reference — scale factor differs
+  const BC_s = bcType==='G7' ? bc*10.932 : bc*4.477;
   const Tr=tempF+459.67, Cs=49.0223*Math.sqrt(Tr);
   const P=29.921*Math.pow(1-6.87535e-6*altFt,5.2561);
   const svp=Math.exp(17.625*(tempF-32)*5/9/(243.04+(tempF-32)*5/9))*0.2953;
   const rho=0.002378*(P/29.921)*(518.67/Tr)*(1-0.00378*(hum/100)*svp/P);
-  const BC_s=bc*4.477, dt=0.0005, g=32.174;
+  const dt=0.0005, g=32.174;
   let vx=mv,vy=0,x=0,y=0,t=0,zeroY=null,zeroHit=false;
-  const checkYds=[],results=[];
-  for (let r=100;r<=maxYds;r+=100) checkYds.push(r);
+  // Build check points
+  const checkYds=[], results=[];
+  for (let r=intervalYds; r<=maxYds; r+=intervalYds) checkYds.push(r);
   let nc=0;
-  while (x<maxYds*3&&t<5&&nc<checkYds.length) {
-    const v=Math.sqrt(vx*vx+vy*vy),mach=v/Cs,drag=rho*g1Cd(mach)*v*v/(2*BC_s);
+  while (x<maxYds*3&&t<6&&nc<checkYds.length) {
+    const v=Math.sqrt(vx*vx+vy*vy), mach=v/Cs;
+    const drag=rho*interpDrag(table,mach)*v*v/(2*BC_s);
     vx+=(-drag*(vx/v))*dt; vy+=(-drag*(vy/v)-g)*dt; x+=vx*dt; y+=vy*dt; t+=dt;
     if (!zeroHit&&x/3>=zero){zeroY=y;zeroHit=true;}
     if (nc<checkYds.length&&x/3>=checkYds[nc]) {
@@ -1712,46 +1727,140 @@ async function renderDropTab(batch) {
   const el=document.getElementById('tab-drop'); if (!el) return;
   const stats=batch.shots?.length?calcStats(batch.shots.filter(s=>s.velocity>0).map(s=>s.velocity)):null;
   const inv=await getBulletData(batch.bullet);
-  const rBC=batch.bc_g1||inv.bc_g1||null, rWt=batch.bullet_weight_gr||inv.bullet_weight_gr||null;
+
+  // BC priority: batch stored > inventory G1 > inventory G7
+  const invBcG1 = batch.bc_g1||inv.bc_g1||null;
+  const invBcG7 = inv.bc_g7||null;
+  // Default to G1 if available, G7 if only G7 exists
+  const defaultBcType = invBcG1 ? 'G1' : (invBcG7 ? 'G7' : 'G1');
+  const defaultBc     = defaultBcType==='G1' ? invBcG1 : invBcG7;
+  const rWt = batch.bullet_weight_gr||inv.bullet_weight_gr||null;
+
+  // Source label for BC
+  const bcSrc = batch.bc_g1 ? 'batch' : (inv.bc_g1||inv.bc_g7) ? 'inventory' : null;
+
   el.innerHTML=`
+    <div class="section-title">Ballistic Coefficient</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px" id="bc-type-toggle">
+      <button class="btn btn-secondary btn-sm" id="bc-btn-G1" onclick="setBCType('G1')" style="${defaultBcType==='G1'?'border-color:var(--accent);color:var(--accent)':''}">G1</button>
+      <button class="btn btn-secondary btn-sm" id="bc-btn-G7" onclick="setBCType('G7')" style="${defaultBcType==='G7'?'border-color:var(--accent);color:var(--accent)':''}">G7</button>
+    </div>
+    <div class="form-row" style="margin-bottom:4px">
+      <div class="form-group">
+        <label>BC Value <span id="bc-type-label" style="color:var(--accent)">${defaultBcType}</span></label>
+        <input class="form-control" id="drop-bc" type="number" step="0.001" value="${defaultBc||''}">
+        ${bcSrc?`<div style="font-size:11px;color:var(--muted2);margin-top:4px;font-family:'Share Tech Mono',monospace">// AUTO-FILLED FROM ${bcSrc.toUpperCase()} · ${defaultBcType}</div>`:''}
+      </div>
+      <div class="form-group">
+        <label>Bullet Wt (gr)</label>
+        <input class="form-control" id="drop-wt" type="number" step="0.1" value="${rWt||''}">
+        ${(batch.bullet_weight_gr||inv.bullet_weight_gr)?`<div style="font-size:11px;color:var(--muted2);margin-top:4px;font-family:'Share Tech Mono',monospace">// AUTO-FILLED</div>`:''}
+      </div>
+    </div>
+
     <div class="section-title">Environmental</div>
     <div class="env-strip">
       <div><label>Temp °F</label><input type="number" id="env-temp" value="${batch.range_conditions?.temp_f||59}"></div>
       <div><label>Alt ft</label><input type="number" id="env-alt" value="${batch.range_conditions?.elevation||0}"></div>
       <div><label>Humidity %</label><input type="number" id="env-hum" value="${batch.range_conditions?.humidity||50}"></div>
     </div>
-    <div class="form-row" style="margin-bottom:14px">
-      <div class="form-group"><label>Zero (yds)</label><input class="form-control" id="env-zero" type="number" value="100"></div>
-      <div class="form-group"><label>MV (fps)</label><input class="form-control" id="env-mv" type="number" value="${stats?Math.round(stats.avg):''}" placeholder="from chrono"></div>
+
+    <div class="section-title">Table Settings</div>
+    <div class="form-row three" style="margin-bottom:14px">
+      <div class="form-group">
+        <label>Zero (yds)</label>
+        <input class="form-control" id="env-zero" type="number" value="100">
+      </div>
+      <div class="form-group">
+        <label>Max Range (yds)</label>
+        <input class="form-control" id="env-max-range" type="number" value="1000">
+      </div>
+      <div class="form-group">
+        <label>Interval (yds)</label>
+        <input class="form-control" id="env-interval" type="number" value="100">
+      </div>
     </div>
-    <div class="form-row" style="margin-bottom:14px">
-      <div class="form-group"><label>BC G1</label><input class="form-control" id="drop-bc" type="number" step="0.001" value="${rBC||''}"></div>
-      <div class="form-group"><label>Bullet Wt (gr)</label><input class="form-control" id="drop-wt" type="number" step="0.1" value="${rWt||''}"></div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label>MV (fps)</label>
+      <input class="form-control" id="env-mv" type="number" value="${stats?Math.round(stats.avg):''}" placeholder="from chrono">
+      ${stats?`<div style="font-size:11px;color:var(--muted2);margin-top:4px;font-family:'Share Tech Mono',monospace">// AUTO-FILLED FROM CHRONO: ${Math.round(stats.avg)} FPS AVG</div>`:''}
     </div>
+
     ${mkBtn('COMPUTE DROP TABLE','btn-primary',`recomputeDrop('${batch.id}')`, '')}
     <div id="drop-table-result" style="margin-top:14px"></div>`;
+
+  // Store BC type state on the element
+  el._bcType = defaultBcType;
+  el._invBcG1 = invBcG1;
+  el._invBcG7 = invBcG7;
+  el._batchBcG1 = batch.bc_g1||null;
 }
+
+window.setBCType = (type) => {
+  const el = document.getElementById('tab-drop');
+  if (!el) return;
+  el._bcType = type;
+  // Update toggle buttons
+  ['G1','G7'].forEach(t => {
+    const b = document.getElementById(`bc-btn-${t}`);
+    if (b) b.style.cssText = t===type ? 'border-color:var(--accent);color:var(--accent)' : '';
+  });
+  // Update label
+  const lbl = document.getElementById('bc-type-label');
+  if (lbl) lbl.textContent = type;
+  // Auto-fill BC from inventory for this type
+  const bcInput = document.getElementById('drop-bc');
+  if (!bcInput) return;
+  const batchVal = el._batchBcG1;
+  const invG1 = el._invBcG1, invG7 = el._invBcG7;
+  if (type==='G1') {
+    if (batchVal||invG1) bcInput.value = batchVal||invG1;
+  } else {
+    if (invG7) bcInput.value = invG7;
+    else if (batchVal||invG1) bcInput.value = ''; // don't use G1 value for G7 slot
+  }
+};
 window.recomputeDrop = async batchId => {
   const batch=await dbGet('batches',batchId), inv=await getBulletData(batch.bullet);
   const stats=batch.shots?.length?calcStats(batch.shots.filter(s=>s.velocity>0).map(s=>s.velocity)):null;
-  const mv=parseFloat(document.getElementById('env-mv').value)||stats?.avg;
-  const bc=parseFloat(document.getElementById('drop-bc')?.value)||batch.bc_g1||inv.bc_g1;
-  const wt=parseFloat(document.getElementById('drop-wt')?.value)||batch.bullet_weight_gr||inv.bullet_weight_gr;
-  const temp=parseFloat(document.getElementById('env-temp').value)||59;
-  const alt=parseFloat(document.getElementById('env-alt').value)||0;
-  const hum=parseFloat(document.getElementById('env-hum').value)||50;
-  const zero=parseFloat(document.getElementById('env-zero').value)||100;
-  if (!mv||!bc||!wt){document.getElementById('drop-table-result').innerHTML=`<p style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--muted2)">// ENTER MV, BC G1, AND BULLET WEIGHT TO COMPUTE</p>`;return;}
-  const rows=computeDropTable(mv,bc,wt,temp,alt,hum,zero);
-  if (!rows?.length){document.getElementById('drop-table-result').innerHTML=`<p style="color:var(--danger)">// COMPUTATION FAILED — CHECK INPUTS</p>`;return;}
-  document.getElementById('drop-table-result').innerHTML=`
-    <div class="card"><div class="card-header"><div class="marker"></div><h3>Ballistic Drop Table</h3><div class="hdr-tag">ZERO: ${zero} YDS</div></div>
+  const tabEl = document.getElementById('tab-drop');
+  const bcType = tabEl?._bcType || 'G1';
+  const mv   = parseFloat(document.getElementById('env-mv')?.value)||stats?.avg;
+  const bc   = parseFloat(document.getElementById('drop-bc')?.value);
+  const wt   = parseFloat(document.getElementById('drop-wt')?.value)||batch.bullet_weight_gr||inv.bullet_weight_gr;
+  const temp = parseFloat(document.getElementById('env-temp')?.value)||59;
+  const alt  = parseFloat(document.getElementById('env-alt')?.value)||0;
+  const hum  = parseFloat(document.getElementById('env-hum')?.value)||50;
+  const zero = parseFloat(document.getElementById('env-zero')?.value)||100;
+  const maxR = parseFloat(document.getElementById('env-max-range')?.value)||1000;
+  const intv = parseFloat(document.getElementById('env-interval')?.value)||100;
+  const resultEl = document.getElementById('drop-table-result');
+  if (!mv||!bc||!wt){resultEl.innerHTML=`<p style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--muted2)">// ENTER MV, BC ${bcType}, AND BULLET WEIGHT TO COMPUTE</p>`;return;}
+  if (intv<25||intv>500){resultEl.innerHTML=`<p style="color:var(--danger);font-family:'Share Tech Mono',monospace;font-size:13px">// INTERVAL MUST BE 25–500 YDS</p>`;return;}
+  if (maxR<100||maxR>2000){resultEl.innerHTML=`<p style="color:var(--danger);font-family:'Share Tech Mono',monospace;font-size:13px">// MAX RANGE MUST BE 100–2000 YDS</p>`;return;}
+  const rows=computeDropTable(mv,bc,wt,temp,alt,hum,zero,maxR,intv,bcType);
+  if (!rows?.length){resultEl.innerHTML=`<p style="color:var(--danger);font-family:'Share Tech Mono',monospace">// COMPUTATION FAILED — CHECK INPUTS</p>`;return;}
+  resultEl.innerHTML=`
+    <div class="card">
+      <div class="card-header">
+        <div class="marker"></div>
+        <h3>Drop Table</h3>
+        <div class="hdr-tag">BC ${bcType}: ${bc}</div>
+        <div class="hdr-tag" style="margin-left:4px">ZERO: ${zero} YDS</div>
+      </div>
       <div style="overflow-x:auto"><table class="drop-table">
-        <thead><tr><th>Range</th><th>Vel</th><th>Drop"</th><th>MOA</th><th>ft·lb</th></tr></thead>
-        <tbody>${rows.map(r=>`<tr class="${r.range===zero?'zero-row':''}"><td>${r.range} yd</td><td>${r.velocity}</td><td>${r.drop_from_zero!=null?fmt(r.drop_from_zero,1):'—'}</td><td>${r.moa!=null?fmt(r.moa,2):'—'}</td><td>${r.energy}</td></tr>`).join('')}</tbody>
+        <thead><tr><th>Range</th><th>Vel</th><th>Drop"</th><th>MOA</th><th>MILS</th><th>ft·lb</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr class="${r.range===zero?'zero-row':''}">
+          <td>${r.range} yd</td>
+          <td>${r.velocity}</td>
+          <td>${r.drop_from_zero!=null?fmt(r.drop_from_zero,1):'—'}</td>
+          <td>${r.moa!=null?fmt(r.moa,2):'—'}</td>
+          <td>${r.moa!=null?fmt(r.moa/3.438,2):'—'}</td>
+          <td>${r.energy}</td>
+        </tr>`).join('')}</tbody>
       </table></div>
     </div>
-    <p style="font-size:11px;color:var(--muted);margin-top:8px;font-family:'Share Tech Mono',monospace">// BC G1: ${bc} · MV: ${Math.round(mv)} FPS · ${wt} GR · ${temp}°F / ${alt}FT / ${hum}%RH</p>`;
+    <p style="font-size:11px;color:var(--muted);margin-top:8px;font-family:'Share Tech Mono',monospace">// BC ${bcType}: ${bc} · MV: ${Math.round(mv)} FPS · ${wt} GR · ${temp}°F / ${alt}FT / ${hum}%RH · ${intv}YD INTERVALS</p>`;
 };
 window.deleteBatch = async batchId => {
   if (!confirm_(`Delete batch ${batchId}?`)) return;
