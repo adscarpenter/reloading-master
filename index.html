@@ -586,6 +586,63 @@ textarea.form-control { min-height: 80px; resize: vertical; }
   #bottom-nav, #top-bar .action-btn, .tabs, .btn, .back-btn { display: none !important; }
   #view { padding: 0; }
 }
+
+/* ═══════════════════════════════════════════
+   TARGET ANALYSIS
+═══════════════════════════════════════════ */
+#target-canvas-wrap {
+  position: relative; width: 100%; touch-action: none;
+  background: #000; overflow: hidden;
+  border: 1px solid var(--border);
+}
+#target-canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+.target-toolbar {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  padding: 10px 0; margin-bottom: 10px;
+}
+.target-tool-btn {
+  flex: 1; min-width: 60px; padding: 10px 8px; font-size: 11px; font-weight: 800;
+  letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; border: none;
+  background: var(--surface2); color: var(--muted2); border: 1px solid var(--border);
+  font-family: 'Barlow Condensed', sans-serif; transition: all .15s; text-align: center;
+  touch-action: manipulation;
+}
+.target-tool-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+.target-tool-btn:active { opacity: .8; }
+.tgt-stat-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;
+}
+.tgt-stat-box {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-left: 3px solid var(--border2); padding: 10px 12px;
+}
+.tgt-stat-box.hi { border-left-color: var(--accent); }
+.tgt-stat-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--muted2); margin-bottom: 4px;
+}
+.tgt-stat-val {
+  font-size: 20px; font-weight: 700; color: var(--text);
+  font-family: 'Share Tech Mono', monospace;
+}
+.tgt-stat-unit { font-size: 11px; color: var(--muted2); margin-left: 3px; }
+.tgt-shot-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tgt-shot-table th {
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted2); padding: 7px 8px; text-align: right; border-bottom: 2px solid var(--border);
+}
+.tgt-shot-table th:first-child { text-align: left; }
+.tgt-shot-table td {
+  padding: 9px 8px; border-bottom: 1px solid var(--border);
+  text-align: right; font-family: 'Share Tech Mono', monospace;
+}
+.tgt-shot-table td:first-child { text-align: left; font-weight: 700; color: var(--accent); }
+.tgt-shot-table tr:last-child td { border-bottom: none; }
+.tgt-mode-hint {
+  font-size: 11px; font-family: 'Share Tech Mono', monospace;
+  color: var(--accent); padding: 8px 12px; background: rgba(79,195,247,.08);
+  border: 1px solid rgba(79,195,247,.2); margin-bottom: 10px; letter-spacing: .5px;
+}
 </style>
 </head>
 <body>
@@ -657,6 +714,22 @@ textarea.form-control { min-height: 80px; resize: vertical; }
         </svg>
       </div>
       BATCH
+    </button>
+
+    <button class="nav-item" data-route="target">
+      <div class="nav-top"></div>
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="12" cy="12" r="5"/>
+          <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+          <line x1="12" y1="2" x2="12" y2="5"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="5" y2="12"/>
+          <line x1="19" y1="12" x2="22" y2="12"/>
+        </svg>
+      </div>
+      TARGET
     </button>
 
     <button class="nav-item" data-route="import">
@@ -2784,6 +2857,641 @@ async function processXLSX(buffer) {
     toast('IMPORT COMPLETE','success');
   } catch(err){result.innerHTML=`<div class="import-log"><div class="err">// ERROR: ${err.message}</div></div>`;}
 }
+
+
+// ════════════════════════════════════════════════════
+//  TARGET ANALYSIS
+// ════════════════════════════════════════════════════
+
+// ── State ──
+let _tgt = {
+  image: null,          // HTMLImageElement
+  imageData: null,      // base64 data URL
+  scale: null,          // pixels per inch
+  poa: null,            // {x, y} in image coords
+  impacts: [],          // [{x, y, num}]
+  distYds: 100,
+  distUnit: 'yds',
+  batchId: '',
+  rangeDate: new Date().toISOString().slice(0,10),
+  // tool modes: 'scale1' 'scale2' 'poa' 'impact' 'select'
+  mode: 'impact',
+  scaleP1: null,
+  scaleP2: null,
+  selectedIdx: -1,
+  dragging: false,
+  dragOffsetX: 0,
+  dragOffsetY: 0,
+};
+
+register('target', async () => {
+  setTitle('TARGET', false, `<button class="action-btn" onclick="exportTargetSession()">${ICONS.export} EXPORT</button>`);
+  const batches = await dbGetAll('batches');
+  const batchOpts = batches.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
+    .map(b=>`<option value="${b.id}" ${b.id===_tgt.batchId?'selected':''}>${b.id}</option>`).join('');
+
+  render(`
+    <!-- Session inputs -->
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-header"><div class="marker"></div><h3>Session</h3></div>
+      <div class="card-body">
+        <div class="form-row three">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Distance</label>
+            <input class="form-control" id="tgt-dist" type="number" inputmode="decimal" step="1" value="${_tgt.distYds}" oninput="_tgt.distYds=parseFloat(this.value)||100;renderTargetStats()">
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Unit</label>
+            <select class="form-control" id="tgt-unit" onchange="_tgt.distUnit=this.value;renderTargetStats()">
+              <option value="yds" ${_tgt.distUnit==='yds'?'selected':''}>Yards</option>
+              <option value="m"   ${_tgt.distUnit==='m'  ?'selected':''}>Meters</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Range Date</label>
+            <input class="form-control" id="tgt-date" type="date" value="${_tgt.rangeDate}" oninput="_tgt.rangeDate=this.value">
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:12px;margin-bottom:0">
+          <label>Link to Batch</label>
+          <select class="form-control" id="tgt-batch" onchange="_tgt.batchId=this.value">
+            <option value="">— None —</option>${batchOpts}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Image upload -->
+    ${!_tgt.imageData ? `
+    <div class="drop-zone" id="tgt-drop" onclick="document.getElementById('tgt-file').click()" style="margin-bottom:12px">
+      <div style="color:var(--accent)">${ICONS.upload}</div>
+      <p>Tap to upload target image</p>
+      <p style="font-size:12px;font-family:'Share Tech Mono',monospace">// JPG, PNG, HEIC</p>
+    </div>
+    <input type="file" id="tgt-file" accept="image/*" style="display:none" onchange="loadTargetImage(event)">
+    ` : ''}
+
+    <!-- Canvas area -->
+    ${_tgt.imageData ? `
+    <!-- Toolbar -->
+    <div class="target-toolbar">
+      <button class="target-tool-btn ${_tgt.mode==='scale1'||_tgt.mode==='scale2'?'active':''}" onclick="setTgtMode('scale1')" id="tool-scale">
+        SCALE
+      </button>
+      <button class="target-tool-btn ${_tgt.mode==='poa'?'active':''}" onclick="setTgtMode('poa')" id="tool-poa">
+        POA
+      </button>
+      <button class="target-tool-btn ${_tgt.mode==='impact'?'active':''}" onclick="setTgtMode('impact')" id="tool-impact">
+        IMPACT
+      </button>
+      <button class="target-tool-btn ${_tgt.mode==='select'?'active':''}" onclick="setTgtMode('select')" id="tool-select">
+        EDIT
+      </button>
+      <button class="target-tool-btn" onclick="undoLastImpact()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">
+        UNDO
+      </button>
+      <button class="target-tool-btn" onclick="clearTargetSession()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">
+        CLEAR
+      </button>
+    </div>
+
+    <!-- Mode hint -->
+    <div class="tgt-mode-hint" id="tgt-hint"></div>
+
+    <!-- Scale input (shown during scale mode) -->
+    <div id="tgt-scale-wrap" style="display:none;margin-bottom:10px">
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Known Distance</label>
+          <input class="form-control" id="tgt-scale-dist" type="number" inputmode="decimal" step="0.01" value="1.0" placeholder="e.g. 1.0">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Unit</label>
+          <select class="form-control" id="tgt-scale-unit">
+            <option value="in">Inches</option>
+            <option value="cm">Centimeters</option>
+            <option value="mm">Millimeters</option>
+          </select>
+        </div>
+      </div>
+      <div id="tgt-scale-status" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2);margin-top:6px"></div>
+    </div>
+
+    <!-- Delete selected impact -->
+    <div id="tgt-delete-wrap" style="display:none;margin-bottom:10px">
+      ${mkBtnSm('DELETE SELECTED','btn-danger','deleteSelectedImpact()','trash')}
+    </div>
+
+    <!-- Canvas -->
+    <div id="target-canvas-wrap">
+      <canvas id="target-canvas"></canvas>
+    </div>
+
+    <!-- Scale indicator -->
+    <div id="tgt-scale-indicator" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2);margin-top:6px;text-align:right"></div>
+
+    <!-- Stats -->
+    <div id="tgt-stats-wrap" style="margin-top:14px"></div>
+    ` : ''}
+  `);
+
+  if (_tgt.imageData) {
+    initTargetCanvas();
+    updateTgtHint();
+  }
+
+  // Drag/drop on upload zone
+  const dz = document.getElementById('tgt-drop');
+  if (dz) {
+    dz.addEventListener('dragover', e=>{e.preventDefault();dz.classList.add('over');});
+    dz.addEventListener('dragleave', ()=>dz.classList.remove('over'));
+    dz.addEventListener('drop', e=>{e.preventDefault();dz.classList.remove('over');if(e.dataTransfer.files[0])loadTargetImageFile(e.dataTransfer.files[0]);});
+  }
+});
+
+window.loadTargetImage = e => { if (e.target.files[0]) loadTargetImageFile(e.target.files[0]); };
+window.loadTargetImageFile = file => {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    _tgt.imageData = ev.target.result;
+    _tgt.image = null;
+    _tgt.scale = null;
+    _tgt.poa = null;
+    _tgt.impacts = [];
+    _tgt.mode = 'scale1';
+    navigate('target');
+  };
+  reader.readAsDataURL(file);
+};
+
+function initTargetCanvas() {
+  const canvas = document.getElementById('target-canvas');
+  const wrap   = document.getElementById('target-canvas-wrap');
+  if (!canvas || !wrap) return;
+
+  const img = new Image();
+  img.onload = () => {
+    _tgt.image = img;
+    const maxW = wrap.clientWidth || 360;
+    const ratio = img.height / img.width;
+    canvas.width  = maxW;
+    canvas.height = Math.round(maxW * ratio);
+    drawTargetCanvas();
+    renderTargetStats();
+    updateScaleIndicator();
+  };
+  img.src = _tgt.imageData;
+
+  // ── Pointer events for canvas ──
+  canvas.addEventListener('pointerdown', onTgtPointerDown);
+  canvas.addEventListener('pointermove', onTgtPointerMove);
+  canvas.addEventListener('pointerup',   onTgtPointerUp);
+  canvas.addEventListener('pointercancel', () => { _tgt.dragging = false; });
+}
+
+function canvasToImage(cx, cy) {
+  const canvas = document.getElementById('target-canvas');
+  if (!canvas || !_tgt.image) return {x:cx, y:cy};
+  const scaleX = _tgt.image.width  / canvas.width;
+  const scaleY = _tgt.image.height / canvas.height;
+  return { x: cx * scaleX, y: cy * scaleY };
+}
+function imageToCanvas(ix, iy) {
+  const canvas = document.getElementById('target-canvas');
+  if (!canvas || !_tgt.image) return {x:ix, y:iy};
+  const scaleX = canvas.width  / _tgt.image.width;
+  const scaleY = canvas.height / _tgt.image.height;
+  return { x: ix * scaleX, y: iy * scaleY };
+}
+function getCanvasPos(e) {
+  const canvas = document.getElementById('target-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top)  * scaleY,
+  };
+}
+
+// Hit test: returns impact index if within 24px radius, else -1
+function hitTestImpact(cx, cy) {
+  const HIT_R = 24;
+  for (let i = _tgt.impacts.length - 1; i >= 0; i--) {
+    const c = imageToCanvas(_tgt.impacts[i].x, _tgt.impacts[i].y);
+    const dx = cx - c.x, dy = cy - c.y;
+    if (Math.sqrt(dx*dx + dy*dy) < HIT_R) return i;
+  }
+  return -1;
+}
+
+function onTgtPointerDown(e) {
+  e.preventDefault();
+  const {x, y} = getCanvasPos(e);
+  const imgPos  = canvasToImage(x, y);
+
+  if (_tgt.mode === 'select') {
+    const idx = hitTestImpact(x, y);
+    if (idx >= 0) {
+      _tgt.selectedIdx = idx;
+      _tgt.dragging    = true;
+      // Offset: drag handle is below/right of center so finger doesn't cover the point
+      const HANDLE_OFFSET = 30; // px on canvas
+      const c = imageToCanvas(_tgt.impacts[idx].x, _tgt.impacts[idx].y);
+      _tgt.dragOffsetX = (x - c.x);
+      _tgt.dragOffsetY = (y - c.y) - HANDLE_OFFSET;
+      document.getElementById('tgt-delete-wrap').style.display = '';
+    } else {
+      _tgt.selectedIdx = -1;
+      _tgt.dragging    = false;
+      document.getElementById('tgt-delete-wrap').style.display = 'none';
+    }
+    drawTargetCanvas();
+    return;
+  }
+
+  if (_tgt.mode === 'poa') {
+    _tgt.poa = imgPos;
+    drawTargetCanvas();
+    renderTargetStats();
+    setTgtMode('impact');
+    toast('POA SET — TAP IMPACTS','success');
+    return;
+  }
+
+  if (_tgt.mode === 'scale1') {
+    _tgt.scaleP1 = imgPos;
+    _tgt.scaleP2 = null;
+    _tgt.mode = 'scale2';
+    updateTgtHint();
+    drawTargetCanvas();
+    return;
+  }
+
+  if (_tgt.mode === 'scale2') {
+    _tgt.scaleP2 = imgPos;
+    computeScale();
+    drawTargetCanvas();
+    return;
+  }
+
+  if (_tgt.mode === 'impact') {
+    _tgt.impacts.push({ x: imgPos.x, y: imgPos.y, num: _tgt.impacts.length + 1 });
+    drawTargetCanvas();
+    renderTargetStats();
+    return;
+  }
+}
+
+function onTgtPointerMove(e) {
+  if (!_tgt.dragging || _tgt.selectedIdx < 0) return;
+  e.preventDefault();
+  const {x, y} = getCanvasPos(e);
+  // The impact point is at (pointer - dragOffset) adjusted for handle offset
+  const HANDLE_OFFSET = 30;
+  const newCx = x - _tgt.dragOffsetX;
+  const newCy = y - _tgt.dragOffsetY - HANDLE_OFFSET;
+  const imgPos = canvasToImage(newCx, newCy);
+  _tgt.impacts[_tgt.selectedIdx].x = imgPos.x;
+  _tgt.impacts[_tgt.selectedIdx].y = imgPos.y;
+  drawTargetCanvas();
+  renderTargetStats();
+}
+
+function onTgtPointerUp(e) {
+  _tgt.dragging = false;
+}
+
+function computeScale() {
+  const p1 = _tgt.scaleP1, p2 = _tgt.scaleP2;
+  if (!p1 || !p2) return;
+  const px = Math.sqrt((p2.x-p1.x)**2 + (p2.y-p1.y)**2);
+  const distEl   = document.getElementById('tgt-scale-dist');
+  const unitEl   = document.getElementById('tgt-scale-unit');
+  const knownDist = parseFloat(distEl?.value)||1;
+  const unit      = unitEl?.value||'in';
+  const inchConv  = unit==='in' ? 1 : unit==='cm' ? 1/2.54 : 1/25.4;
+  const knownIn   = knownDist * inchConv;
+  _tgt.scale = px / knownIn;  // pixels per inch
+  const statusEl = document.getElementById('tgt-scale-status');
+  if (statusEl) statusEl.textContent = `// SCALE SET: ${_tgt.scale.toFixed(1)} px/in · ${knownDist} ${unit} = ${px.toFixed(0)} px`;
+  updateScaleIndicator();
+  toast(`SCALE SET: ${knownDist} ${unit}`,'success');
+  setTgtMode('poa');
+}
+
+function updateScaleIndicator() {
+  const el = document.getElementById('tgt-scale-indicator');
+  if (!el) return;
+  el.textContent = _tgt.scale ? `// SCALE: ${_tgt.scale.toFixed(1)} px/in` : '// NO SCALE SET';
+}
+
+window.setTgtMode = mode => {
+  _tgt.mode = mode;
+  _tgt.dragging = false;
+  if (mode !== 'select') { _tgt.selectedIdx = -1; }
+  ['scale','poa','impact','select'].forEach(m => {
+    const b = document.getElementById(`tool-${m}`);
+    if (b) b.className = `target-tool-btn${(mode===m||(mode==='scale2'&&m==='scale'))?'  active':''}`;
+  });
+  const scaleWrap = document.getElementById('tgt-scale-wrap');
+  if (scaleWrap) scaleWrap.style.display = (mode==='scale1'||mode==='scale2') ? '' : 'none';
+  const delWrap = document.getElementById('tgt-delete-wrap');
+  if (delWrap) delWrap.style.display = (mode==='select' && _tgt.selectedIdx>=0) ? '' : 'none';
+  updateTgtHint();
+  drawTargetCanvas();
+};
+
+function updateTgtHint() {
+  const el = document.getElementById('tgt-hint'); if (!el) return;
+  const hints = {
+    scale1: '// SCALE TOOL: tap first reference point on image',
+    scale2: '// SCALE TOOL: tap second reference point — then enter known distance',
+    poa:    '// POA: tap the point of aim on the target',
+    impact: '// IMPACT: tap each bullet hole in order',
+    select: '// EDIT: tap an impact to select — drag using the handle below the point — tap X to delete',
+  };
+  el.textContent = hints[_tgt.mode] || '';
+}
+
+function drawTargetCanvas() {
+  const canvas = document.getElementById('target-canvas');
+  if (!canvas || !_tgt.image) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(_tgt.image, 0, 0, canvas.width, canvas.height);
+
+  // ── Scale line ──
+  if (_tgt.scaleP1) {
+    const c1 = imageToCanvas(_tgt.scaleP1.x, _tgt.scaleP1.y);
+    ctx.beginPath(); ctx.arc(c1.x, c1.y, 6, 0, Math.PI*2);
+    ctx.fillStyle = '#FFD700'; ctx.fill();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  if (_tgt.scaleP1 && _tgt.scaleP2) {
+    const c1 = imageToCanvas(_tgt.scaleP1.x, _tgt.scaleP1.y);
+    const c2 = imageToCanvas(_tgt.scaleP2.x, _tgt.scaleP2.y);
+    ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
+    ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2; ctx.setLineDash([5,3]); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(c2.x, c2.y, 6, 0, Math.PI*2);
+    ctx.fillStyle = '#FFD700'; ctx.fill();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+
+  // ── POA crosshair ──
+  if (_tgt.poa) {
+    const c = imageToCanvas(_tgt.poa.x, _tgt.poa.y);
+    const R = 12, ARM = 20;
+    ctx.strokeStyle = '#00e676'; ctx.lineWidth = 2.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(c.x-ARM, c.y); ctx.lineTo(c.x-R, c.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(c.x+R, c.y);   ctx.lineTo(c.x+ARM, c.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(c.x, c.y-ARM); ctx.lineTo(c.x, c.y-R); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(c.x, c.y+R);   ctx.lineTo(c.x, c.y+ARM); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI*2);
+    ctx.strokeStyle = '#00e676'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // ── Impacts ──
+  const IMPACT_R = 18;
+  _tgt.impacts.forEach((imp, i) => {
+    const c    = imageToCanvas(imp.x, imp.y);
+    const isSel = _tgt.selectedIdx === i;
+
+    // Circle
+    ctx.beginPath(); ctx.arc(c.x, c.y, IMPACT_R, 0, Math.PI*2);
+    ctx.fillStyle = isSel ? 'rgba(255,107,66,0.25)' : 'rgba(79,195,247,0.2)';
+    ctx.fill();
+    ctx.strokeStyle = isSel ? '#ff6b42' : '#4fc3f7';
+    ctx.lineWidth = isSel ? 2.5 : 2;
+    ctx.stroke();
+
+    // Number
+    ctx.fillStyle = isSel ? '#ff6b42' : '#fff';
+    ctx.font = `bold ${IMPACT_R-2}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(imp.num, c.x, c.y);
+
+    // Drag handle (offset point below center) — shown in select mode or always
+    if (_tgt.mode === 'select') {
+      const HANDLE_OFFSET = 30;
+      const hx = c.x, hy = c.y + IMPACT_R + HANDLE_OFFSET;
+      // Line from circle to handle
+      ctx.beginPath(); ctx.moveTo(c.x, c.y + IMPACT_R); ctx.lineTo(hx, hy);
+      ctx.strokeStyle = isSel ? '#ff6b42' : 'rgba(79,195,247,0.6)';
+      ctx.lineWidth = 1.5; ctx.setLineDash([3,2]); ctx.stroke(); ctx.setLineDash([]);
+      // Handle diamond
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(Math.PI/4);
+      ctx.fillStyle = isSel ? '#ff6b42' : '#4fc3f7';
+      ctx.fillRect(-6, -6, 12, 12);
+      ctx.restore();
+    }
+
+    // Delete X button (shown when selected)
+    if (isSel) {
+      const delX = c.x + IMPACT_R + 2, delY = c.y - IMPACT_R - 2;
+      ctx.beginPath(); ctx.arc(delX, delY, 10, 0, Math.PI*2);
+      ctx.fillStyle = '#ff6b42'; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('✕', delX, delY);
+    }
+  });
+
+  // ── Group circle (smallest enclosing circle approx) ──
+  if (_tgt.poa && _tgt.impacts.length >= 2 && _tgt.scale) {
+    const stats = calcTargetStats();
+    if (stats) {
+      const cc = imageToCanvas(stats.centroid.x, stats.centroid.y);
+      const groupRadiusPx = (stats.groupSize / 2) * _tgt.scale;
+      ctx.beginPath(); ctx.arc(cc.x, cc.y, groupRadiusPx * (canvas.width/_tgt.image.width), 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
+      ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
+      // Centroid dot
+      ctx.beginPath(); ctx.arc(cc.x, cc.y, 4, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
+    }
+  }
+}
+
+window.undoLastImpact = () => {
+  if (_tgt.impacts.length === 0) return;
+  _tgt.impacts.pop();
+  // Renumber
+  _tgt.impacts.forEach((imp,i) => imp.num = i+1);
+  drawTargetCanvas();
+  renderTargetStats();
+};
+window.deleteSelectedImpact = () => {
+  if (_tgt.selectedIdx < 0) return;
+  _tgt.impacts.splice(_tgt.selectedIdx, 1);
+  _tgt.impacts.forEach((imp,i) => imp.num = i+1);
+  _tgt.selectedIdx = -1;
+  document.getElementById('tgt-delete-wrap').style.display = 'none';
+  drawTargetCanvas();
+  renderTargetStats();
+};
+window.clearTargetSession = () => {
+  if (!confirm_('Clear all marks? Image will remain.')) return;
+  _tgt.poa = null; _tgt.impacts = []; _tgt.scaleP1 = null; _tgt.scaleP2 = null;
+  _tgt.scale = null; _tgt.selectedIdx = -1;
+  drawTargetCanvas(); renderTargetStats();
+};
+
+// ── Stats engine ──
+function calcTargetStats() {
+  if (!_tgt.poa || _tgt.impacts.length < 1 || !_tgt.scale) return null;
+  const pxPerIn = _tgt.scale;
+  const distIn  = _tgt.distUnit==='m' ? _tgt.distYds * 39.3701 : _tgt.distYds * 36;
+  const moaFactor = 1.047 / 36; // 1 MOA in inches per yard
+
+  const shots = _tgt.impacts.map(imp => {
+    const dx = (imp.x - _tgt.poa.x) / pxPerIn;  // inches, + = right
+    const dy = (imp.y - _tgt.poa.y) / pxPerIn;  // inches, + = down (image coords)
+    const windage   =  dx;                        // + = right
+    const elevation = -dy;                        // + = up
+    const dist      = Math.sqrt(dx*dx + dy*dy);
+    return { num: imp.num, dist, windage, elevation };
+  });
+
+  const cx = shots.reduce((s,sh)=>s+sh.windage,  0) / shots.length;
+  const cy = shots.reduce((s,sh)=>s+sh.elevation, 0) / shots.length;
+  const centroid = {
+    x: _tgt.poa.x + cx * pxPerIn,
+    y: _tgt.poa.y - cy * pxPerIn,
+    windage: cx, elevation: cy,
+  };
+
+  const meanRadius = shots.reduce((s,sh)=>{
+    const d = Math.sqrt((sh.windage-cx)**2 + (sh.elevation-cy)**2);
+    return s + d;
+  }, 0) / shots.length;
+
+  // Group size = max distance between any two impacts
+  let groupSize = 0;
+  for (let a=0; a<shots.length; a++) for (let b=a+1; b<shots.length; b++) {
+    const d = Math.sqrt((_tgt.impacts[a].x-_tgt.impacts[b].x)**2+(_tgt.impacts[a].y-_tgt.impacts[b].y)**2)/pxPerIn;
+    if (d > groupSize) groupSize = d;
+  }
+
+  // W/H spread
+  const winds = shots.map(s=>s.windage), elevs = shots.map(s=>s.elevation);
+  const wSpread = Math.max(...winds) - Math.min(...winds);
+  const hSpread = Math.max(...elevs) - Math.min(...elevs);
+
+  // MOA
+  const yds = _tgt.distUnit==='m' ? _tgt.distYds*1.09361 : _tgt.distYds;
+  const groupMOA     = yds > 0 ? groupSize     / (yds * moaFactor * 36) * 100 / 1.047 : 0;
+  const meanRadMOA   = yds > 0 ? meanRadius    / (yds * moaFactor * 36) * 100 / 1.047 : 0;
+
+  return { shots, centroid, meanRadius, groupSize, wSpread, hSpread, groupMOA, meanRadMOA };
+}
+
+function renderTargetStats() {
+  const el = document.getElementById('tgt-stats-wrap'); if (!el) return;
+  const stats = calcTargetStats();
+  if (!stats) {
+    el.innerHTML = !_tgt.scale ? `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET SCALE → POA → MARK IMPACTS TO SEE STATS</p>` :
+      !_tgt.poa ? `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET POA THEN MARK IMPACTS</p>` :
+      `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// MARK AT LEAST 1 IMPACT</p>`;
+    return;
+  }
+  const {shots, centroid, meanRadius, groupSize, wSpread, hSpread, groupMOA, meanRadMOA} = stats;
+
+  el.innerHTML = `
+    <div class="section-title">Group Statistics</div>
+    <div class="tgt-stat-grid">
+      <div class="tgt-stat-box hi">
+        <div class="tgt-stat-label">Group Size</div>
+        <div class="tgt-stat-val">${groupSize.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
+        <div style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-top:2px">${groupMOA.toFixed(2)} MOA</div>
+      </div>
+      <div class="tgt-stat-box hi">
+        <div class="tgt-stat-label">Mean Radius</div>
+        <div class="tgt-stat-val">${meanRadius.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
+        <div style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-top:2px">${meanRadMOA.toFixed(2)} MOA</div>
+      </div>
+      <div class="tgt-stat-box">
+        <div class="tgt-stat-label">POI-POA Windage</div>
+        <div class="tgt-stat-val" style="color:${Math.abs(centroid.windage)<0.1?'var(--success)':centroid.windage>0?'var(--info)':'var(--info)'}">
+          ${centroid.windage>=0?'+':''}${centroid.windage.toFixed(3)}<span class="tgt-stat-unit">in</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${centroid.windage>=0?'RIGHT':'LEFT'}</div>
+      </div>
+      <div class="tgt-stat-box">
+        <div class="tgt-stat-label">POI-POA Elevation</div>
+        <div class="tgt-stat-val" style="color:${Math.abs(centroid.elevation)<0.1?'var(--success)':centroid.elevation>0?'var(--success)':'var(--danger)'}">
+          ${centroid.elevation>=0?'+':''}${centroid.elevation.toFixed(3)}<span class="tgt-stat-unit">in</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${centroid.elevation>=0?'HIGH':'LOW'}</div>
+      </div>
+      <div class="tgt-stat-box">
+        <div class="tgt-stat-label">Width Spread</div>
+        <div class="tgt-stat-val">${wSpread.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
+      </div>
+      <div class="tgt-stat-box">
+        <div class="tgt-stat-label">Height Spread</div>
+        <div class="tgt-stat-val">${hSpread.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
+      </div>
+    </div>
+
+    <div class="section-title">Shot Data — ${shots.length} Impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>
+    <div style="overflow-x:auto"><table class="tgt-shot-table">
+      <thead><tr><th>#</th><th>Dist (in)</th><th>Wind (in)</th><th>Elev (in)</th></tr></thead>
+      <tbody>${shots.map(s=>`<tr>
+        <td>${s.num}</td>
+        <td>${s.dist.toFixed(3)}</td>
+        <td style="color:${s.windage>=0?'var(--info)':'var(--info)'}">${s.windage>=0?'+':''}${s.windage.toFixed(3)}</td>
+        <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+// ── Export ──
+window.exportTargetSession = async () => {
+  const stats = calcTargetStats();
+  const payload = {
+    app: 'ReloadingMaster',
+    type: 'target_session',
+    version: 1,
+    exported_at: new Date().toISOString(),
+    batch_id: _tgt.batchId || null,
+    range_date: _tgt.rangeDate,
+    distance: _tgt.distYds,
+    distance_unit: _tgt.distUnit,
+    scale_px_per_in: _tgt.scale,
+    poa: _tgt.poa,
+    impacts: _tgt.impacts,
+    stats: stats ? {
+      group_size_in:    stats.groupSize,
+      group_size_moa:   stats.groupMOA,
+      mean_radius_in:   stats.meanRadius,
+      mean_radius_moa:  stats.meanRadMOA,
+      poi_windage_in:   stats.centroid.windage,
+      poi_elevation_in: stats.centroid.elevation,
+      w_spread_in:      stats.wSpread,
+      h_spread_in:      stats.hSpread,
+      shots:            stats.shots,
+    } : null,
+    image: _tgt.imageData,
+  };
+  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  const date = new Date().toISOString().slice(0,10);
+  const filename = `target-${_tgt.batchId||'session'}-${date}.json`;
+  if (navigator.share) {
+    try {
+      const file = new File([blob], filename, {type:'application/json'});
+      await navigator.share({files:[file], title:'Target Session Export'});
+      return;
+    } catch(e) { if(e.name==='AbortError') return; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('TARGET SESSION EXPORTED','success');
+};
 
 register('404',()=>{
   setTitle('404',true);
