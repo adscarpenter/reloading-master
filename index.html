@@ -2943,6 +2943,7 @@ let _tgt = {
   rangeDate: new Date().toISOString().slice(0,10),
   // tool modes: 'scale1' 'scale2' 'poa' 'impact' 'select'
   mode: 'impact',
+  impactSize: 'md',  // 'sm' | 'md' | 'lg'
   scaleP1: null,
   scaleP2: null,
   selectedIdx: -1,
@@ -3014,12 +3015,20 @@ register('target', async () => {
       <button class="target-tool-btn ${_tgt.mode==='select'?'active':''}" onclick="setTgtMode('select')" id="tool-select">
         EDIT
       </button>
-      <button class="target-tool-btn" onclick="undoLastImpact()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">
+      <button class="target-tool-btn" onclick="undoLastImpact()" style="color:var(--danger);border-color:rgba(178,76,61,.3)">
         UNDO
       </button>
-      <button class="target-tool-btn" onclick="clearTargetSession()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">
+      <button class="target-tool-btn" onclick="clearTargetSession()" style="color:var(--danger);border-color:rgba(178,76,61,.3)">
         CLEAR
       </button>
+    </div>
+
+    <!-- Marker size picker -->
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+      <span style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-family:'Lora',serif;flex-shrink:0;padding-right:2px">MARKER</span>
+      <button class="target-tool-btn${_tgt.impactSize==='sm'?' active':''}" id="tgt-sz-sm" onclick="setImpactSize('sm')" style="flex:0 0 52px;padding:8px 6px;font-size:11px">SM</button>
+      <button class="target-tool-btn${_tgt.impactSize==='md'?' active':''}" id="tgt-sz-md" onclick="setImpactSize('md')" style="flex:0 0 52px;padding:8px 6px;font-size:11px">MD</button>
+      <button class="target-tool-btn${_tgt.impactSize==='lg'?' active':''}" id="tgt-sz-lg" onclick="setImpactSize('lg')" style="flex:0 0 52px;padding:8px 6px;font-size:11px">LG</button>
     </div>
 
     <!-- Mode hint -->
@@ -3141,9 +3150,10 @@ function getCanvasPos(e) {
   };
 }
 
-// Hit test: returns impact index if within 24px radius, else -1
+// Hit test: returns impact index if within tap radius, else -1
 function hitTestImpact(cx, cy) {
-  const HIT_R = 24;
+  const BASE_R = _tgt.impactSize === 'sm' ? 10 : _tgt.impactSize === 'lg' ? 26 : 18;
+  const HIT_R  = Math.max(BASE_R + 8, 22); // always at least 22px for fat-finger comfort
   for (let i = _tgt.impacts.length - 1; i >= 0; i--) {
     const c = imageToCanvas(_tgt.impacts[i].x, _tgt.impacts[i].y);
     const dx = cx - c.x, dy = cy - c.y;
@@ -3269,6 +3279,15 @@ window.setTgtMode = mode => {
   drawTargetCanvas();
 };
 
+window.setImpactSize = size => {
+  _tgt.impactSize = size;
+  ['sm','md','lg'].forEach(s => {
+    const b = document.getElementById(`tgt-sz-${s}`);
+    if (b) b.className = `target-tool-btn${s === size ? ' active' : ''}`;
+  });
+  drawTargetCanvas();
+};
+
 function updateTgtHint() {
   const el = document.getElementById('tgt-hint'); if (!el) return;
   const hints = {
@@ -3320,36 +3339,57 @@ function drawTargetCanvas() {
   }
 
   // ── Impacts ──
-  const IMPACT_R = 18;
-  _tgt.impacts.forEach((imp, i) => {
-    const c    = imageToCanvas(imp.x, imp.y);
-    const isSel = _tgt.selectedIdx === i;
+  const IMPACT_R = _tgt.impactSize === 'sm' ? 10 : _tgt.impactSize === 'lg' ? 26 : 18;
+  const FONT_SZ  = _tgt.impactSize === 'sm' ?  8 : _tgt.impactSize === 'lg' ? 17 : 13;
+  const CHX_GAP  = Math.max(IMPACT_R * 0.38, 4);  // gap at center so number stays readable
 
-    // Circle
+  _tgt.impacts.forEach((imp, i) => {
+    const c     = imageToCanvas(imp.x, imp.y);
+    const isSel = _tgt.selectedIdx === i;
+    const ringColor = isSel ? '#b24c3d' : '#2c5f88';
+    const fillAlpha = isSel ? 'rgba(178,76,61,0.22)' : 'rgba(44,95,136,0.18)';
+
+    // Circle fill
     ctx.beginPath(); ctx.arc(c.x, c.y, IMPACT_R, 0, Math.PI*2);
-    ctx.fillStyle = isSel ? 'rgba(255,107,66,0.25)' : 'rgba(79,195,247,0.2)';
-    ctx.fill();
-    ctx.strokeStyle = isSel ? '#ff6b42' : '#4fc3f7';
+    ctx.fillStyle = fillAlpha; ctx.fill();
+
+    // Circle stroke
+    ctx.strokeStyle = ringColor;
     ctx.lineWidth = isSel ? 2.5 : 2;
+    ctx.setLineDash([]);
     ctx.stroke();
 
-    // Number
-    ctx.fillStyle = isSel ? '#ff6b42' : '#fff';
-    ctx.font = `bold ${IMPACT_R-2}px 'Barlow Condensed', sans-serif`;
+    // Crosshair arms (edge → gap, leaving center clear for number)
+    ctx.strokeStyle = isSel ? 'rgba(178,76,61,0.9)' : 'rgba(44,95,136,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    // left
+    ctx.beginPath(); ctx.moveTo(c.x - IMPACT_R, c.y); ctx.lineTo(c.x - CHX_GAP, c.y); ctx.stroke();
+    // right
+    ctx.beginPath(); ctx.moveTo(c.x + CHX_GAP, c.y); ctx.lineTo(c.x + IMPACT_R, c.y); ctx.stroke();
+    // top
+    ctx.beginPath(); ctx.moveTo(c.x, c.y - IMPACT_R); ctx.lineTo(c.x, c.y - CHX_GAP); ctx.stroke();
+    // bottom
+    ctx.beginPath(); ctx.moveTo(c.x, c.y + CHX_GAP); ctx.lineTo(c.x, c.y + IMPACT_R); ctx.stroke();
+
+    // Number label
+    ctx.fillStyle = isSel ? '#b24c3d' : '#fff';
+    ctx.font = `bold ${FONT_SZ}px 'Share Tech Mono', monospace`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // Thin dark outline for legibility on any background
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2.5;
+    ctx.strokeText(imp.num, c.x, c.y);
     ctx.fillText(imp.num, c.x, c.y);
 
-    // Drag handle (offset point below center) — shown in select mode or always
+    // Drag handle (shown in select mode)
     if (_tgt.mode === 'select') {
       const HANDLE_OFFSET = 30;
       const hx = c.x, hy = c.y + IMPACT_R + HANDLE_OFFSET;
-      // Line from circle to handle
       ctx.beginPath(); ctx.moveTo(c.x, c.y + IMPACT_R); ctx.lineTo(hx, hy);
-      ctx.strokeStyle = isSel ? '#ff6b42' : 'rgba(79,195,247,0.6)';
+      ctx.strokeStyle = isSel ? '#b24c3d' : 'rgba(44,95,136,0.6)';
       ctx.lineWidth = 1.5; ctx.setLineDash([3,2]); ctx.stroke(); ctx.setLineDash([]);
-      // Handle diamond
       ctx.save(); ctx.translate(hx, hy); ctx.rotate(Math.PI/4);
-      ctx.fillStyle = isSel ? '#ff6b42' : '#4fc3f7';
+      ctx.fillStyle = isSel ? '#b24c3d' : '#2c5f88';
       ctx.fillRect(-6, -6, 12, 12);
       ctx.restore();
     }
@@ -3358,8 +3398,8 @@ function drawTargetCanvas() {
     if (isSel) {
       const delX = c.x + IMPACT_R + 2, delY = c.y - IMPACT_R - 2;
       ctx.beginPath(); ctx.arc(delX, delY, 10, 0, Math.PI*2);
-      ctx.fillStyle = '#ff6b42'; ctx.fill();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = '#b24c3d'; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.stroke();
       ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('✕', delX, delY);
