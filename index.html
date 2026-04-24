@@ -157,7 +157,7 @@ button{cursor:pointer}
       view.innerHTML = sheet('Setup Lists', `
         <div class="row"><button class="btn grow" onclick="app.openRifleForm()">Add Rifle</button><button class="btn grow" onclick="app.openComponentForm()">Add Component</button></div>
         <div class="divider"></div>
-        ${state.rifles.length?`<h3>Rifles</h3><div class="list">${state.rifles.map(r=>`<div class="list-item"><div><h4>${esc(r.name)}</h4><p>${esc(r.chambering)} ${r.twist?'/ Twist '+esc(r.twist):''}</p></div><button class="btn small red" onclick="app.deleteItem('rifles','${r.id}')">Delete</button></div>`).join('')}</div>`:empty('No rifles saved')}
+        ${state.rifles.length?`<h3>Rifles</h3><div class="list">${state.rifles.map(r=>`<div class="list-item"><div onclick="app.openRifleForm('${r.id}')"><h4>${esc(r.name)}</h4><p>${esc(r.chambering)} ${r.twist?'/ Twist '+esc(r.twist):''}</p></div><div class="row"><button type="button" class="btn small" onclick="app.openRifleForm('${r.id}')">Edit</button><button type="button" class="btn small red" onclick="app.deleteItem('rifles','${r.id}')">Delete</button></div></div>`).join('')}</div>`:empty('No rifles saved')}
       `) + sheet('Data Management', `
         <div class="grid two">
           <button class="btn primary" onclick="app.exportJSON()">Export Backup</button>
@@ -174,7 +174,11 @@ button{cursor:pointer}
 
   function loadList(items){ return `<div class="list">${items.map(l=>`<div class="list-item" onclick="app.openLoadForm('${l.id}')"><div><h4>${esc(l.name)}</h4><p>${esc(l.caliber)} • ${esc(l.bullet)} • ${esc(l.powder)} ${esc(l.charge)}gr</p></div><span class="pill">${esc(l.coal||'COAL —')}</span></div>`).join('')}</div>`; }
   function sessionCard(s, compact=false){ const st=stats((s.shots||[]).map(x=>x.velocity)); return `<div class="list-item" onclick="app.openSession('${s.id}')"><div><h4>${esc(s.date)} — ${esc(s.rifle||'Rifle not set')}</h4><p>${esc(s.loadName||'No load')} • ${esc(s.distance||'')} yd • AVG ${round(st.avg,0)} / ES ${round(st.es,0)} / SD ${round(st.sd,1)}</p></div><span class="pill">${st.n} SHOTS</span></div>`; }
-  function componentSummary(){ const c=state.components; const rows = Object.keys(c).flatMap(k => c[k].map(x=>`<div class="list-item"><div><h4>${esc(x.name)}</h4><p>${k.toUpperCase()} • Qty ${esc(x.qty||'—')} ${x.lot?'• Lot '+esc(x.lot):''}</p></div><button class="btn small red" onclick="app.deleteComponent('${k}','${x.id}')">Delete</button></div>`)); return rows.length?`<div class="list">${rows.join('')}</div>`:empty('No components saved'); }
+  function componentSummary(){
+    const c=state.components;
+    const rows = Object.keys(c).flatMap(k => c[k].map(x=>`<div class="list-item"><div onclick="app.openComponentForm('${k}','${x.id}')"><h4>${esc(x.name)}</h4><p>${k.toUpperCase()} • Qty ${esc(x.qty||'—')} ${x.lot?'• Lot '+esc(x.lot):''}</p></div><div class="row"><button type="button" class="btn small" onclick="app.openComponentForm('${k}','${x.id}')">Edit</button><button type="button" class="btn small red" onclick="app.deleteComponent('${k}','${x.id}')">Delete</button></div></div>`));
+    return rows.length?`<div class="list">${rows.join('')}</div>`:empty('No components saved');
+  }
 
   function saveRangeCard(form){
     const d=collect(form); state.lastEnv={temp:d.temp, wind:d.wind, altitude:d.altitude, notes:d.envNotes};
@@ -191,8 +195,17 @@ button{cursor:pointer}
     </form>`);
     $('#loadForm').onsubmit = e => { e.preventDefault(); const d=collect(e.target); const obj={...l,...d,id:id||uid(),updated:new Date().toISOString()}; if(id){ state.loads=state.loads.map(x=>x.id===id?obj:x); } else state.loads.unshift(obj); save(); closeModal(); nav('loads'); };
   }
-  function openRifleForm(){ modal(`<h2>New Rifle</h2><form id="rifleForm"><div class="grid two">${field('name','Rifle name')}${field('chambering','Chambering')}${field('twist','Twist rate')}${field('optic','Optic')}</div><div class="divider"></div>${textarea('notes','Notes','','note-input')}<div class="divider"></div><button class="btn green full">Save Rifle</button></form>`); $('#rifleForm').onsubmit=e=>{e.preventDefault();state.rifles.unshift({...collect(e.target),id:uid()});save();closeModal();nav('tools');}; }
-  function openComponentForm(){ modal(`<h2>New Component</h2><form id="compForm"><div class="grid two">${select('type','Type',['brass','bullets','powder','primers'])}${field('name','Component name')}${field('qty','Quantity')}${field('lot','Lot number')}</div><div class="divider"></div><button class="btn green full">Save Component</button></form>`); $('#compForm').onsubmit=e=>{e.preventDefault();const d=collect(e.target);state.components[d.type].unshift({...d,id:uid()});save();closeModal();nav('tools');}; }
+  function openRifleForm(id=''){
+    const r = state.rifles.find(x=>x.id===id) || {name:'',chambering:'',twist:'',optic:'',notes:''};
+    modal(`<h2>${id?'Edit':'New'} Rifle</h2><form id="rifleForm"><div class="grid two">${field('name','Rifle name',r.name)}${field('chambering','Chambering',r.chambering)}${field('twist','Twist rate',r.twist)}${field('optic','Optic',r.optic)}</div><div class="divider"></div>${textarea('notes','Notes',r.notes,'note-input')}<div class="divider"></div><div class="row"><button type="submit" class="btn green grow">Save Rifle</button>${id?`<button type="button" class="btn red" onclick="app.deleteItem('rifles','${id}');app.closeModal();">Delete</button>`:''}</div></form>`);
+    $('#rifleForm').onsubmit=e=>{e.preventDefault();const d={...r,...collect(e.target),id:id||uid(),updated:new Date().toISOString()}; if(id){state.rifles=state.rifles.map(x=>x.id===id?d:x);} else {state.rifles.unshift(d);} save();closeModal();nav('tools');toast('Rifle saved');};
+  }
+  function openComponentForm(type='', id=''){
+    const existing = type && id ? (state.components[type]||[]).find(x=>x.id===id) : null;
+    const c = existing || {type:type||'brass',name:'',qty:'',lot:''};
+    modal(`<h2>${id?'Edit':'New'} Component</h2><form id="compForm"><div class="grid two">${select('type','Type',['brass','bullets','powder','primers'],c.type)}${field('name','Component name',c.name)}${field('qty','Quantity',c.qty)}${field('lot','Lot number',c.lot)}</div><div class="divider"></div><div class="row"><button type="submit" class="btn green grow">Save Component</button>${id?`<button type="button" class="btn red" onclick="app.deleteComponent('${type}','${id}');app.closeModal();">Delete</button>`:''}</div></form>`);
+    $('#compForm').onsubmit=e=>{e.preventDefault();const d=collect(e.target);const obj={...c,...d,id:id||uid(),updated:new Date().toISOString()}; Object.keys(state.components).forEach(k=>{state.components[k]=state.components[k].filter(x=>x.id!==obj.id);}); state.components[obj.type].unshift(obj); save();closeModal();nav('tools');toast('Component saved');};
+  }
   function openSession(id){ const s=state.sessions.find(x=>x.id===id); if(!s) return; const st=stats((s.shots||[]).map(x=>x.velocity)); modal(`<h2>${esc(s.date)} Range Card</h2><div class="stat-grid"><div class="stat"><label>Avg</label><b>${round(st.avg,0)}</b></div><div class="stat"><label>ES</label><b>${round(st.es,0)}</b></div><div class="stat"><label>SD</label><b>${round(st.sd,1)}</b></div><div class="stat"><label>N</label><b>${st.n}</b></div></div><div class="divider"></div><p><b>Rifle:</b> ${esc(s.rifle||'—')}<br><b>Load:</b> ${esc(s.loadName||'—')}<br><b>Distance:</b> ${esc(s.distance||'—')}<br><b>Conditions:</b> ${esc(s.temp||'—')}°F / Wind ${esc(s.wind||'—')} / Alt ${esc(s.altitude||'—')}</p><div class="divider"></div><div class="table-scroll"><table class="log-table"><thead><tr><th>#</th><th>FPS</th><th>POI</th><th>Notes</th></tr></thead><tbody>${(s.shots||[]).map(x=>`<tr><td class="shot-num">${x.num}</td><td>${esc(x.velocity)}</td><td>${esc(x.poi)}</td><td>${esc(x.notes)}</td></tr>`).join('')}</tbody></table></div><div class="divider"></div><div class="row"><button class="btn" onclick="app.printSession('${id}')">Print</button><button class="btn red" onclick="app.deleteSession('${id}')">Delete</button></div>`); }
 
   function modal(content){ $('#modalRoot').innerHTML=`<div class="modal-wrap" onclick="if(event.target===this) app.closeModal()"><div class="modal"><div class="handle"></div>${content}</div></div>`; }
