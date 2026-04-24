@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Reload Logbook</title>
+<style>
+:root{
+  --paper:#f5efdF;
+  --paper-2:#fff9e8;
+  --ink:#1d2a35;
+  --muted:#6c6255;
+  --line:#d9cba9;
+  --line-dark:#b7a475;
+  --red:#b24c3d;
+  --blue:#2c5f88;
+  --green:#466d49;
+  --shadow:0 8px 24px rgba(30,24,12,.18);
+  --radius:18px;
+  --nav-h:74px;
+  --header-h:64px;
+  --field-min:48px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;min-height:100dvh;background:#e8dcc3;color:var(--ink);font-family:ui-serif, Georgia, Cambria, "Times New Roman", serif;}
+body{overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+#app{height:100dvh;display:flex;flex-direction:column;background:
+  radial-gradient(circle at top left, rgba(255,255,255,.45), transparent 32rem),
+  linear-gradient(120deg,#dfd0ad,#f6edda 42%,#d9c7a1)}
+.topbar{height:calc(var(--header-h) + env(safe-area-inset-top));padding:env(safe-area-inset-top) 14px 0;display:flex;align-items:center;gap:10px;background:rgba(245,239,223,.92);border-bottom:2px solid var(--line-dark);box-shadow:0 3px 14px rgba(50,35,10,.12);z-index:10;flex-shrink:0;backdrop-filter:blur(10px)}
+.brand{flex:1;min-width:0}.brand h1{font-size:22px;line-height:1;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}.brand small{display:block;margin-top:3px;color:var(--muted);font-size:12px;letter-spacing:.1em;text-transform:uppercase;font-family:ui-sans-serif,system-ui,sans-serif}
+.icon-btn,.top-action{border:2px solid var(--ink);background:var(--paper-2);min-height:44px;min-width:44px;border-radius:12px;padding:8px 12px;font-family:ui-sans-serif,system-ui,sans-serif;font-weight:800;box-shadow:2px 2px 0 rgba(29,42,53,.2)}
+.top-action{display:none;background:var(--blue);color:white;border-color:var(--ink)}
+.view{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:14px 14px calc(var(--nav-h) + env(safe-area-inset-bottom) + 18px)}
+.bottom-nav{position:fixed;left:0;right:0;bottom:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:rgba(245,239,223,.95);border-top:2px solid var(--line-dark);display:grid;grid-template-columns:repeat(5,1fr);z-index:20;box-shadow:0 -4px 16px rgba(50,35,10,.12);backdrop-filter:blur(10px)}
+.nav-btn{border:0;border-right:1px solid var(--line);background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.nav-btn:last-child{border-right:0}.nav-btn.active{color:var(--blue);background:rgba(44,95,136,.08)}.nav-ico{font-size:22px;line-height:1}
+.sheet{background:var(--paper);border:2px solid var(--line-dark);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px;position:relative}.sheet:before{content:"";position:absolute;inset:0;background-image:linear-gradient(to bottom,transparent 31px,rgba(110,90,55,.16) 32px);background-size:100% 32px;pointer-events:none}.sheet-head{position:relative;display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:2px solid var(--line-dark);background:rgba(255,249,232,.6)}.sheet-head h2,.sheet-head h3{flex:1;font-size:20px;line-height:1.1}.sheet-head .tag{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:800;color:var(--blue);border:1px solid var(--line-dark);background:rgba(255,255,255,.35);padding:5px 8px;border-radius:999px}.sheet-body{position:relative;padding:14px}
+.grid{display:grid;gap:12px}.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}.grid.four{grid-template-columns:repeat(4,1fr)}
+@media(max-width:720px){.grid.two,.grid.three,.grid.four{grid-template-columns:1fr}.brand h1{font-size:19px}.view{padding-left:10px;padding-right:10px}}
+.field{display:flex;flex-direction:column;gap:5px}.field label{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.input,select,textarea{width:100%;min-height:var(--field-min);border:0;border-bottom:2px solid var(--line-dark);background:rgba(255,255,255,.18);border-radius:0;padding:9px 5px;font-size:20px;outline:none}.input:focus,select:focus,textarea:focus{border-bottom-color:var(--blue);background:rgba(255,255,255,.35)}textarea{min-height:96px;resize:vertical;line-height:1.45;font-family:"Bradley Hand","Segoe Print","Comic Sans MS",cursive;font-size:21px}.note-input{font-family:"Bradley Hand","Segoe Print","Comic Sans MS",cursive;font-size:21px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.grow{flex:1}.divider{height:2px;background:var(--line-dark);opacity:.65;margin:16px 0}.muted{color:var(--muted)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.danger{color:var(--red)}.success{color:var(--green)}.blue{color:var(--blue)}
+.btn{min-height:48px;border:2px solid var(--ink);background:var(--paper-2);border-radius:14px;padding:11px 14px;font-family:ui-sans-serif,system-ui,sans-serif;font-weight:900;letter-spacing:.05em;text-transform:uppercase;box-shadow:3px 3px 0 rgba(29,42,53,.18)}.btn:active{transform:translate(1px,1px);box-shadow:1px 1px 0 rgba(29,42,53,.18)}.btn.primary{background:var(--blue);color:white}.btn.green{background:var(--green);color:white}.btn.red{background:var(--red);color:white}.btn.small{min-height:38px;padding:8px 10px;border-radius:10px;font-size:12px}.btn.ghost{background:transparent;box-shadow:none}.btn.full{width:100%}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}@media(max-width:640px){.stat-grid{grid-template-columns:repeat(2,1fr)}}.stat{background:rgba(255,255,255,.25);border:1px solid var(--line-dark);border-left:5px solid var(--blue);padding:10px;border-radius:12px}.stat label{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;text-transform:uppercase;font-weight:900;letter-spacing:.08em;color:var(--muted)}.stat b{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;margin-top:4px;color:var(--ink)}
+.list{display:grid;gap:10px}.list-item{background:rgba(255,255,255,.28);border:1px solid var(--line-dark);border-radius:14px;padding:12px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}.list-item h4{font-size:20px;line-height:1.1}.list-item p{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);margin-top:4px}.pill{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line-dark);border-radius:999px;padding:4px 8px;background:rgba(255,249,232,.55);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:800}.empty{text-align:center;padding:38px 20px;color:var(--muted)}.empty b{display:block;font-size:20px;color:var(--ink);margin-bottom:8px}
+.log-table{width:100%;border-collapse:collapse;background:rgba(255,255,255,.18);border:1px solid var(--line-dark)}.log-table th{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-align:left;padding:9px;border-bottom:2px solid var(--line-dark)}.log-table td{padding:10px 9px;border-bottom:1px solid var(--line);vertical-align:middle}.log-table input{min-height:38px;background:transparent;border:0;border-bottom:1px solid var(--line-dark);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;width:100%;outline:none}.log-table tr:last-child td{border-bottom:0}.table-scroll{overflow:auto;border-radius:12px}.shot-num{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:900;color:var(--blue)}
+.modal-wrap{position:fixed;inset:0;background:rgba(29,42,53,.45);z-index:100;display:flex;align-items:flex-end}.modal{width:100%;max-height:92dvh;overflow:auto;background:var(--paper);border-top:3px solid var(--ink);border-radius:22px 22px 0 0;padding:16px;box-shadow:0 -10px 30px rgba(0,0,0,.25)}.modal h2{margin-bottom:12px}.handle{width:44px;height:5px;background:var(--line-dark);border-radius:999px;margin:0 auto 14px}.hide{display:none!important}
+.print-page{display:none}
+@media print{body{overflow:visible;background:white}#app{display:none}.print-page{display:block;padding:.35in;background:white;color:#111}.print-sheet{break-inside:avoid;border:2px solid #111;margin-bottom:.2in;padding:.12in;min-height:9in;background:repeating-linear-gradient(to bottom,#fff,#fff .27in,#ddd .285in)}.print-title{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:.08in;margin-bottom:.1in;font-weight:800;text-transform:uppercase}.print-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.08in;margin-bottom:.12in}.print-field{border-bottom:1px solid #111;min-height:.32in;font-size:10pt}.print-field b{display:block;font-size:7pt;text-transform:uppercase;color:#444}.print-table{width:100%;border-collapse:collapse;font-size:9pt}.print-table th,.print-table td{border:1px solid #333;padding:.045in;text-align:left}.print-notes{border:1px solid #333;min-height:1.5in;margin-top:.1in;padding:.05in}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <button id="backBtn" class="icon-btn hide" aria-label="Back">←</button>
+    <div class="brand"><h1 id="title">Reload Logbook</h1><small id="subtitle">Paper log layout</small></div>
+    <button id="topAction" class="top-action"></button>
+  </header>
+  <main id="view" class="view"></main>
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <button class="nav-btn active" data-route="dashboard"><span class="nav-ico">⌂</span>Dash</button>
+    <button class="nav-btn" data-route="loads"><span class="nav-ico">◫</span>Loads</button>
+    <button class="nav-btn" data-route="range"><span class="nav-ico">◎</span>Range</button>
+    <button class="nav-btn" data-route="records"><span class="nav-ico">▦</span>Records</button>
+    <button class="nav-btn" data-route="tools"><span class="nav-ico">↕</span>Tools</button>
+  </nav>
+</div>
+<div id="modalRoot"></div>
+<div id="printRoot" class="print-page"></div>
+<script>
+(() => {
+  const STORAGE_KEY = 'reloadLogbookPaper.v1';
+  const $ = s => document.querySelector(s);
+  const view = $('#view'), title = $('#title'), subtitle = $('#subtitle'), backBtn = $('#backBtn'), topAction = $('#topAction');
+  const today = () => new Date().toISOString().slice(0,10);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+  const round = (n,d=1) => Number.isFinite(n) ? n.toFixed(d) : '—';
+  let state = loadState();
+  let route = 'dashboard';
+  let editId = null;
+
+  function loadState(){
+    const blank = { rifles:[], components:{brass:[], bullets:[], powder:[], primers:[]}, loads:[], sessions:[], lastEnv:{temp:'',wind:'',altitude:'',notes:''} };
+    try { return { ...blank, ...(JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}) }; } catch { return blank; }
+  }
+  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function setHeader(main, sub='', back=false, actionLabel='', actionFn=null){
+    title.textContent = main; subtitle.textContent = sub || 'Paper log layout';
+    backBtn.classList.toggle('hide', !back); topAction.style.display = actionLabel ? 'inline-flex':'none'; topAction.textContent = actionLabel || '';
+    topAction.onclick = actionFn || null;
+  }
+  function setNav(r){ document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.route === r)); }
+  function nav(r){ route = r; setNav(r); view.scrollTop = 0; routes[r]?.(); }
+  backBtn.onclick = () => nav('dashboard');
+  document.querySelector('.bottom-nav').addEventListener('click', e => { const b=e.target.closest('.nav-btn'); if(b) nav(b.dataset.route); });
+
+  function sheet(head, body, tag='') { return `<section class="sheet"><div class="sheet-head"><h2>${head}</h2>${tag?`<span class="tag">${tag}</span>`:''}</div><div class="sheet-body">${body}</div></section>`; }
+  function field(name, label, value='', type='text', attrs='') { return `<div class="field"><label for="${name}">${label}</label><input class="input" id="${name}" name="${name}" type="${type}" value="${esc(value)}" ${attrs}></div>`; }
+  function select(name,label,options,value=''){ return `<div class="field"><label for="${name}">${label}</label><select id="${name}" name="${name}">${options.map(o=>`<option value="${esc(o)}" ${o==value?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`; }
+  function textarea(name,label,value='',cls=''){ return `<div class="field"><label for="${name}">${label}</label><textarea id="${name}" name="${name}" class="${cls}">${esc(value)}</textarea></div>`; }
+  function empty(msg, action='') { return `<div class="empty"><b>${msg}</b>${action}</div>`; }
+  function collect(form){ return Object.fromEntries(new FormData(form).entries()); }
+  function toast(msg){ const d=document.createElement('div'); d.className='modal-wrap'; d.innerHTML=`<div class="modal" style="text-align:center"><div class="handle"></div><h2>${esc(msg)}</h2><button class="btn primary full" onclick="this.closest('.modal-wrap').remove()">OK</button></div>`; document.body.appendChild(d); setTimeout(()=>d.remove(),1700); }
+
+  function stats(vals){
+    const v = vals.map(num).filter(x=>x>0); if(!v.length) return {n:0,avg:0,sd:0,es:0,min:0,max:0};
+    const avg = v.reduce((a,b)=>a+b,0)/v.length;
+    const sd = Math.sqrt(v.reduce((s,x)=>s+(x-avg)**2,0)/v.length);
+    return {n:v.length,avg,sd,es:Math.max(...v)-Math.min(...v),min:Math.min(...v),max:Math.max(...v)};
+  }
+  const rifleOpts = () => [''].concat(state.rifles.map(r => `${r.name}${r.chambering?' / '+r.chambering:''}`));
+  const loadOpts = () => [''].concat(state.loads.map(l => `${l.name} — ${l.caliber || ''}`));
+
+  const routes = {
+    dashboard(){
+      setHeader('Reload Logbook','Field notebook dashboard');
+      const totalShots = state.sessions.reduce((s,x)=>s+(x.shots||[]).filter(y=>num(y.velocity)>0).length,0);
+      const last = state.sessions[0];
+      view.innerHTML = sheet('Current Log Summary', `
+        <div class="stat-grid">
+          <div class="stat"><label>Loads</label><b>${state.loads.length}</b></div>
+          <div class="stat"><label>Range Cards</label><b>${state.sessions.length}</b></div>
+          <div class="stat"><label>Logged Shots</label><b>${totalShots}</b></div>
+          <div class="stat"><label>Rifles</label><b>${state.rifles.length}</b></div>
+        </div>
+        <div class="divider"></div>
+        <div class="row">
+          <button class="btn primary grow" onclick="app.nav('range')">Start Range Card</button>
+          <button class="btn grow" onclick="app.openLoadForm()">New Load</button>
+        </div>
+      `,'LOG') + sheet('Last Range Card', last ? sessionCard(last,true) : empty('No range cards yet','<button class="btn primary" onclick="app.nav(\'range\')">Create First Card</button>')) + sheet('Recent Loads', state.loads.length ? loadList(state.loads.slice(0,5)) : empty('No loads entered yet','<button class="btn" onclick="app.openLoadForm()">Add Load</button>'));
+    },
+    loads(){
+      setHeader('Load Pages','Recipes and batch notes',false,'+ Load',()=>openLoadForm());
+      view.innerHTML = sheet('Saved Load Pages', state.loads.length ? loadList(state.loads) : empty('No saved loads','<button class="btn primary" onclick="app.openLoadForm()">Add Load</button>'));
+    },
+    range(){
+      setHeader('Range Card','Quick-entry shot log');
+      const html = `<form id="rangeForm">
+        ${sheet('Card Header', `<div class="grid two">${field('date','Date',today(),'date')}${select('rifle','Rifle',rifleOpts())}${select('loadId','Load',loadOpts())}${field('distance','Distance / zero','100','text')}</div>`)}
+        ${sheet('Conditions', `<div class="grid three">${field('temp','Temp °F',state.lastEnv.temp,'number')}${field('wind','Wind',state.lastEnv.wind,'text')}${field('altitude','Altitude',state.lastEnv.altitude,'number')}</div><div class="divider"></div>${textarea('envNotes','Condition notes',state.lastEnv.notes,'note-input')}`,'ENV')}
+        ${sheet('Shot String', `<div class="table-scroll"><table class="log-table"><thead><tr><th>#</th><th>Velocity</th><th>POI / Group</th><th>Pressure / Notes</th></tr></thead><tbody>${Array.from({length:10},(_,i)=>`<tr><td class="shot-num">${i+1}</td><td><input inputmode="numeric" name="v${i}" placeholder="fps"></td><td><input name="p${i}" placeholder="ex: .4R .2U"></td><td><input name="n${i}" placeholder="note"></td></tr>`).join('')}</tbody></table></div><div class="divider"></div><button type="submit" class="btn green full">Save Range Card</button>`,'10 SHOTS')}
+      </form>`;
+      view.innerHTML = html;
+      $('#rangeForm').onsubmit = e => { e.preventDefault(); saveRangeCard(e.target); };
+    },
+    records(){
+      setHeader('Records','Range cards and results');
+      view.innerHTML = sheet('Range Cards', state.sessions.length ? state.sessions.map(s=>sessionCard(s)).join('') : empty('No range records yet'));
+    },
+    tools(){
+      setHeader('Tools','Import / export / setup');
+      view.innerHTML = sheet('Setup Lists', `
+        <div class="row"><button class="btn grow" onclick="app.openRifleForm()">Add Rifle</button><button class="btn grow" onclick="app.openComponentForm()">Add Component</button></div>
+        <div class="divider"></div>
+        ${state.rifles.length?`<h3>Rifles</h3><div class="list">${state.rifles.map(r=>`<div class="list-item"><div onclick="app.openRifleForm('${r.id}')"><h4>${esc(r.name)}</h4><p>${esc(r.chambering)} ${r.twist?'/ Twist '+esc(r.twist):''}</p></div><div class="row"><button type="button" class="btn small" onclick="app.openRifleForm('${r.id}')">Edit</button><button type="button" class="btn small red" onclick="app.deleteItem('rifles','${r.id}')">Delete</button></div></div>`).join('')}</div>`:empty('No rifles saved')}
+      `) + sheet('Data Management', `
+        <div class="grid two">
+          <button class="btn primary" onclick="app.exportJSON()">Export Backup</button>
+          <button class="btn" onclick="app.exportCSV()">Export CSV</button>
+          <button class="btn" onclick="app.printBlank()">Print Blank Log</button>
+          <button class="btn red" onclick="app.clearAll()">Clear Local Data</button>
+        </div>
+        <div class="divider"></div>
+        <div class="field"><label>Import backup JSON</label><input type="file" id="jsonImport" class="input" accept="application/json"></div>
+      `,'LOCAL') + sheet('Components', componentSummary());
+      $('#jsonImport').onchange = importJSON;
+    }
+  };
+
+  function loadList(items){ return `<div class="list">${items.map(l=>`<div class="list-item" onclick="app.openLoadForm('${l.id}')"><div><h4>${esc(l.name)}</h4><p>${esc(l.caliber)} • ${esc(l.bullet)} • ${esc(l.powder)} ${esc(l.charge)}gr</p></div><span class="pill">${esc(l.coal||'COAL —')}</span></div>`).join('')}</div>`; }
+  function sessionCard(s, compact=false){ const st=stats((s.shots||[]).map(x=>x.velocity)); return `<div class="list-item" onclick="app.openSession('${s.id}')"><div><h4>${esc(s.date)} — ${esc(s.rifle||'Rifle not set')}</h4><p>${esc(s.loadName||'No load')} • ${esc(s.distance||'')} yd • AVG ${round(st.avg,0)} / ES ${round(st.es,0)} / SD ${round(st.sd,1)}</p></div><span class="pill">${st.n} SHOTS</span></div>`; }
+  function componentSummary(){
+    const c=state.components;
+    const rows = Object.keys(c).flatMap(k => c[k].map(x=>`<div class="list-item"><div onclick="app.openComponentForm('${k}','${x.id}')"><h4>${esc(x.name)}</h4><p>${k.toUpperCase()} • Qty ${esc(x.qty||'—')} ${x.lot?'• Lot '+esc(x.lot):''}</p></div><div class="row"><button type="button" class="btn small" onclick="app.openComponentForm('${k}','${x.id}')">Edit</button><button type="button" class="btn small red" onclick="app.deleteComponent('${k}','${x.id}')">Delete</button></div></div>`));
+    return rows.length?`<div class="list">${rows.join('')}</div>`:empty('No components saved');
+  }
+
+  function saveRangeCard(form){
+    const d=collect(form); state.lastEnv={temp:d.temp, wind:d.wind, altitude:d.altitude, notes:d.envNotes};
+    const load = state.loads.find(l => `${l.name} — ${l.caliber || ''}` === d.loadId);
+    const shots = Array.from({length:10},(_,i)=>({num:i+1, velocity:d[`v${i}`]||'', poi:d[`p${i}`]||'', notes:d[`n${i}`]||''})).filter(x=>x.velocity || x.poi || x.notes);
+    const s={id:uid(), date:d.date||today(), rifle:d.rifle, loadId:load?.id||'', loadName:load?.name||d.loadId, distance:d.distance, temp:d.temp, wind:d.wind, altitude:d.altitude, envNotes:d.envNotes, shots, created:new Date().toISOString()};
+    state.sessions.unshift(s); save(); nav('records'); toast('Range card saved');
+  }
+
+  function openLoadForm(id=''){
+    const l = state.loads.find(x=>x.id===id) || {id:'',name:'',caliber:'',brass:'',primer:'',powder:'',charge:'',bullet:'',coal:'',cbto:'',notes:''};
+    modal(`<h2>${id?'Edit':'New'} Load Page</h2><form id="loadForm">
+      <div class="grid two">${field('name','Load name',l.name)}${field('caliber','Caliber / chambering',l.caliber)}${field('brass','Brass',l.brass)}${field('primer','Primer',l.primer)}${field('powder','Powder',l.powder)}${field('charge','Charge weight grains',l.charge,'number','step="0.01"')}${field('bullet','Bullet',l.bullet)}${field('coal','COAL',l.coal,'number','step="0.001"')}${field('cbto','CBTO / jump',l.cbto)} </div><div class="divider"></div>${textarea('notes','Load notes',l.notes,'note-input')}<div class="divider"></div><div class="row"><button class="btn green grow" type="submit">Save Load</button>${id?`<button type="button" class="btn red" onclick="app.deleteLoad('${id}')">Delete</button>`:''}</div>
+    </form>`);
+    $('#loadForm').onsubmit = e => { e.preventDefault(); const d=collect(e.target); const obj={...l,...d,id:id||uid(),updated:new Date().toISOString()}; if(id){ state.loads=state.loads.map(x=>x.id===id?obj:x); } else state.loads.unshift(obj); save(); closeModal(); nav('loads'); };
+  }
+  function openRifleForm(id=''){
+    const r = state.rifles.find(x=>x.id===id) || {name:'',chambering:'',twist:'',optic:'',notes:''};
+    modal(`<h2>${id?'Edit':'New'} Rifle</h2><form id="rifleForm"><div class="grid two">${field('name','Rifle name',r.name)}${field('chambering','Chambering',r.chambering)}${field('twist','Twist rate',r.twist)}${field('optic','Optic',r.optic)}</div><div class="divider"></div>${textarea('notes','Notes',r.notes,'note-input')}<div class="divider"></div><div class="row"><button type="submit" class="btn green grow">Save Rifle</button>${id?`<button type="button" class="btn red" onclick="app.deleteItem('rifles','${id}');app.closeModal();">Delete</button>`:''}</div></form>`);
+    $('#rifleForm').onsubmit=e=>{e.preventDefault();const d={...r,...collect(e.target),id:id||uid(),updated:new Date().toISOString()}; if(id){state.rifles=state.rifles.map(x=>x.id===id?d:x);} else {state.rifles.unshift(d);} save();closeModal();nav('tools');toast('Rifle saved');};
+  }
+  function openComponentForm(type='', id=''){
+    const existing = type && id ? (state.components[type]||[]).find(x=>x.id===id) : null;
+    const c = existing || {type:type||'brass',name:'',qty:'',lot:''};
+    modal(`<h2>${id?'Edit':'New'} Component</h2><form id="compForm"><div class="grid two">${select('type','Type',['brass','bullets','powder','primers'],c.type)}${field('name','Component name',c.name)}${field('qty','Quantity',c.qty)}${field('lot','Lot number',c.lot)}</div><div class="divider"></div><div class="row"><button type="submit" class="btn green grow">Save Component</button>${id?`<button type="button" class="btn red" onclick="app.deleteComponent('${type}','${id}');app.closeModal();">Delete</button>`:''}</div></form>`);
+    $('#compForm').onsubmit=e=>{e.preventDefault();const d=collect(e.target);const obj={...c,...d,id:id||uid(),updated:new Date().toISOString()}; Object.keys(state.components).forEach(k=>{state.components[k]=state.components[k].filter(x=>x.id!==obj.id);}); state.components[obj.type].unshift(obj); save();closeModal();nav('tools');toast('Component saved');};
+  }
+  function openSession(id){ const s=state.sessions.find(x=>x.id===id); if(!s) return; const st=stats((s.shots||[]).map(x=>x.velocity)); modal(`<h2>${esc(s.date)} Range Card</h2><div class="stat-grid"><div class="stat"><label>Avg</label><b>${round(st.avg,0)}</b></div><div class="stat"><label>ES</label><b>${round(st.es,0)}</b></div><div class="stat"><label>SD</label><b>${round(st.sd,1)}</b></div><div class="stat"><label>N</label><b>${st.n}</b></div></div><div class="divider"></div><p><b>Rifle:</b> ${esc(s.rifle||'—')}<br><b>Load:</b> ${esc(s.loadName||'—')}<br><b>Distance:</b> ${esc(s.distance||'—')}<br><b>Conditions:</b> ${esc(s.temp||'—')}°F / Wind ${esc(s.wind||'—')} / Alt ${esc(s.altitude||'—')}</p><div class="divider"></div><div class="table-scroll"><table class="log-table"><thead><tr><th>#</th><th>FPS</th><th>POI</th><th>Notes</th></tr></thead><tbody>${(s.shots||[]).map(x=>`<tr><td class="shot-num">${x.num}</td><td>${esc(x.velocity)}</td><td>${esc(x.poi)}</td><td>${esc(x.notes)}</td></tr>`).join('')}</tbody></table></div><div class="divider"></div><div class="row"><button class="btn" onclick="app.printSession('${id}')">Print</button><button class="btn red" onclick="app.deleteSession('${id}')">Delete</button></div>`); }
+
+  function modal(content){ $('#modalRoot').innerHTML=`<div class="modal-wrap" onclick="if(event.target===this) app.closeModal()"><div class="modal"><div class="handle"></div>${content}</div></div>`; }
+  function closeModal(){ $('#modalRoot').innerHTML=''; }
+  function download(name, text, type='text/plain'){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+  function csvCell(v){ const s=String(v??''); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+  function exportCSV(){ const rows=[['date','rifle','load','distance','temp','wind','altitude','shot','velocity','poi','notes']]; state.sessions.forEach(s=>(s.shots||[]).forEach(x=>rows.push([s.date,s.rifle,s.loadName,s.distance,s.temp,s.wind,s.altitude,x.num,x.velocity,x.poi,x.notes]))); download('reload-logbook-range-cards.csv', rows.map(r=>r.map(csvCell).join(',')).join('\n'), 'text/csv'); }
+  function exportJSON(){ download('reload-logbook-backup.json', JSON.stringify(state,null,2), 'application/json'); }
+  function importJSON(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ state=JSON.parse(r.result); save(); nav('tools'); toast('Backup imported'); } catch { alert('Import failed. File is not valid JSON.'); } }; r.readAsText(f); }
+  function printSession(id){ const s=state.sessions.find(x=>x.id===id); renderPrint(s); window.print(); }
+  function printBlank(){ renderPrint(); window.print(); }
+  function renderPrint(s=null){ const shots=s?.shots||Array.from({length:10},(_,i)=>({num:i+1,velocity:'',poi:'',notes:''})); $('#printRoot').innerHTML=`<div class="print-sheet"><div class="print-title"><span>Reload Range Log</span><span>${esc(s?.date||'Date: __________')}</span></div><div class="print-grid"><div class="print-field"><b>Rifle</b>${esc(s?.rifle||'')}</div><div class="print-field"><b>Load</b>${esc(s?.loadName||'')}</div><div class="print-field"><b>Distance</b>${esc(s?.distance||'')}</div><div class="print-field"><b>Conditions</b>${esc(s?`${s.temp}F / ${s.wind}`:'')}</div></div><table class="print-table"><thead><tr><th>#</th><th>Velocity</th><th>POI / Group</th><th>Pressure / Notes</th></tr></thead><tbody>${shots.map(x=>`<tr><td>${x.num}</td><td>${esc(x.velocity)}</td><td>${esc(x.poi)}</td><td>${esc(x.notes)}</td></tr>`).join('')}</tbody></table><div class="print-notes"><b>Notes:</b><br>${esc(s?.envNotes||'')}</div></div>`; }
+  function clearAll(){ if(confirm('Clear all local logbook data on this browser?')){ localStorage.removeItem(STORAGE_KEY); state=loadState(); nav('dashboard'); } }
+  function deleteItem(k,id){ if(confirm('Delete this item?')){ state[k]=state[k].filter(x=>x.id!==id); save(); nav('tools'); } }
+  function deleteComponent(k,id){ if(confirm('Delete this component?')){ state.components[k]=state.components[k].filter(x=>x.id!==id); save(); nav('tools'); } }
+  function deleteLoad(id){ if(confirm('Delete this load?')){ state.loads=state.loads.filter(x=>x.id!==id); save(); closeModal(); nav('loads'); } }
+  function deleteSession(id){ if(confirm('Delete this range card?')){ state.sessions=state.sessions.filter(x=>x.id!==id); save(); closeModal(); nav('records'); } }
+  window.app = { nav, openLoadForm, openRifleForm, openComponentForm, openSession, closeModal, exportJSON, exportCSV, importJSON, printBlank, printSession, clearAll, deleteItem, deleteComponent, deleteLoad, deleteSession };
+  nav('dashboard');
+})();
+</script>
+</body>
+</html>
