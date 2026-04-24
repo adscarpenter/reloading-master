@@ -2458,11 +2458,12 @@ let _tgt = {
   distYds: 100,
   distUnit: 'yds',
   batchId: '',
+  sessionName: '',
   rangeDate: new Date().toISOString().slice(0,10),
   // tool modes: 'scale1' 'scale2' 'poa' 'impact' 'select'
   mode: 'impact',
-  impactSize: 'md',  // 'sm' | 'md' | 'lg'
-  dragType: null,    // 'impact' | 'poa' | 'scale1' | 'scale2'
+  impactSize: 'md',
+  dragType: null,
   scaleP1: null,
   scaleP2: null,
   selectedIdx: -1,
@@ -2499,11 +2500,19 @@ register('target', async () => {
             <input class="form-control" id="tgt-date" type="date" value="${_tgt.rangeDate}" oninput="_tgt.rangeDate=this.value">
           </div>
         </div>
-        <div class="form-group" style="margin-top:12px;margin-bottom:0">
-          <label>Link to Batch</label>
-          <select class="form-control" id="tgt-batch" onchange="_tgt.batchId=this.value">
-            <option value="">— None —</option>${batchOpts}
-          </select>
+        <div class="form-row" style="margin-top:12px">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Link to Batch</label>
+            <select class="form-control" id="tgt-batch" onchange="_tgt.batchId=this.value;document.getElementById('tgt-name-wrap').style.display=this.value?'none':''">
+              <option value="">— None —</option>${batchOpts}
+            </select>
+          </div>
+          <div class="form-group" id="tgt-name-wrap" style="margin-bottom:0;${_tgt.batchId?'display:none':''}">
+            <label>Session Name</label>
+            <input class="form-control" id="tgt-name" type="text" value="${_tgt.sessionName}"
+                   placeholder="e.g. 100yd zero — AM"
+                   oninput="_tgt.sessionName=this.value">
+          </div>
         </div>
       </div>
     </div>
@@ -2541,8 +2550,6 @@ register('target', async () => {
         CLEAR
       </button>
     </div>
-
-    <!-- Marker size picker -->
     <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
       <span style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-family:'Lora',serif;flex-shrink:0;padding-right:2px">MARKER</span>
       <button class="target-tool-btn${_tgt.impactSize==='sm'?' active':''}" id="tgt-sz-sm" onclick="setImpactSize('sm')" style="flex:0 0 52px;padding:8px 6px;font-size:11px">SM</button>
@@ -2613,6 +2620,7 @@ window.loadTargetImageFile = file => {
     _tgt.scale = null;
     _tgt.poa = null;
     _tgt.impacts = [];
+    _tgt.sessionName = '';
     _tgt.mode = 'scale1';
     navigate('target');
   };
@@ -2669,18 +2677,16 @@ function getCanvasPos(e) {
   };
 }
 
-// Hit test: checks circle AND diamond handle. Returns impact index or -1.
+// Hit test: circle + diamond handle
 function hitTestImpact(cx, cy) {
-  const BASE_R     = _tgt.impactSize === 'sm' ? 10 : _tgt.impactSize === 'lg' ? 26 : 18;
-  const CIRCLE_HIT = Math.max(BASE_R + 8, 22);
-  const HANDLE_HIT = 18;
-  const HANDLE_OFF = BASE_R + 30;
+  const BASE_R = _tgt.impactSize==='sm'?10:_tgt.impactSize==='lg'?26:18;
+  const C_HIT = Math.max(BASE_R+8,22), H_HIT=18, H_OFF=BASE_R+30;
   for (let i = _tgt.impacts.length - 1; i >= 0; i--) {
-    const c  = imageToCanvas(_tgt.impacts[i].x, _tgt.impacts[i].y);
-    const dx = cx - c.x, dy = cy - c.y;
-    if (Math.sqrt(dx*dx + dy*dy) < CIRCLE_HIT) return i;
-    const hdx = cx - c.x, hdy = cy - (c.y + HANDLE_OFF);
-    if (Math.sqrt(hdx*hdx + hdy*hdy) < HANDLE_HIT) return i;
+    const c = imageToCanvas(_tgt.impacts[i].x, _tgt.impacts[i].y);
+    const dx=cx-c.x, dy=cy-c.y;
+    if (Math.sqrt(dx*dx+dy*dy)<C_HIT) return i;
+    const hdy=cy-(c.y+H_OFF);
+    if (Math.sqrt(dx*dx+hdy*hdy)<H_HIT) return i;
   }
   return -1;
 }
@@ -2691,56 +2697,23 @@ function onTgtPointerDown(e) {
   const imgPos  = canvasToImage(x, y);
 
   if (_tgt.mode === 'select') {
-    const HIT_POA   = 22;  // tap radius for POA crosshair
-    const HIT_SCALE = 18;  // tap radius for scale reference dots
-
-    // Priority: POA → scale2 → scale1 → impacts
+    const HIT_POA=22, HIT_SCALE=18;
     if (_tgt.poa) {
-      const c = imageToCanvas(_tgt.poa.x, _tgt.poa.y);
-      const dx = x - c.x, dy = y - c.y;
-      if (Math.sqrt(dx*dx + dy*dy) < HIT_POA) {
-        _tgt.dragging = true; _tgt.dragType = 'poa';
-        _tgt.dragOffsetX = dx; _tgt.dragOffsetY = dy;
-        _tgt.selectedIdx = -1;
-        document.getElementById('tgt-delete-wrap').style.display = 'none';
-        drawTargetCanvas(); return;
-      }
+      const c=imageToCanvas(_tgt.poa.x,_tgt.poa.y),dx=x-c.x,dy=y-c.y;
+      if (Math.sqrt(dx*dx+dy*dy)<HIT_POA){_tgt.dragging=true;_tgt.dragType='poa';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;_tgt.selectedIdx=-1;document.getElementById('tgt-delete-wrap').style.display='none';drawTargetCanvas();return;}
     }
     if (_tgt.scaleP2) {
-      const c = imageToCanvas(_tgt.scaleP2.x, _tgt.scaleP2.y);
-      const dx = x - c.x, dy = y - c.y;
-      if (Math.sqrt(dx*dx + dy*dy) < HIT_SCALE) {
-        _tgt.dragging = true; _tgt.dragType = 'scale2';
-        _tgt.dragOffsetX = dx; _tgt.dragOffsetY = dy;
-        _tgt.selectedIdx = -1;
-        document.getElementById('tgt-delete-wrap').style.display = 'none';
-        drawTargetCanvas(); return;
-      }
+      const c=imageToCanvas(_tgt.scaleP2.x,_tgt.scaleP2.y),dx=x-c.x,dy=y-c.y;
+      if (Math.sqrt(dx*dx+dy*dy)<HIT_SCALE){_tgt.dragging=true;_tgt.dragType='scale2';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;_tgt.selectedIdx=-1;document.getElementById('tgt-delete-wrap').style.display='none';drawTargetCanvas();return;}
     }
     if (_tgt.scaleP1) {
-      const c = imageToCanvas(_tgt.scaleP1.x, _tgt.scaleP1.y);
-      const dx = x - c.x, dy = y - c.y;
-      if (Math.sqrt(dx*dx + dy*dy) < HIT_SCALE) {
-        _tgt.dragging = true; _tgt.dragType = 'scale1';
-        _tgt.dragOffsetX = dx; _tgt.dragOffsetY = dy;
-        _tgt.selectedIdx = -1;
-        document.getElementById('tgt-delete-wrap').style.display = 'none';
-        drawTargetCanvas(); return;
-      }
+      const c=imageToCanvas(_tgt.scaleP1.x,_tgt.scaleP1.y),dx=x-c.x,dy=y-c.y;
+      if (Math.sqrt(dx*dx+dy*dy)<HIT_SCALE){_tgt.dragging=true;_tgt.dragType='scale1';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;_tgt.selectedIdx=-1;document.getElementById('tgt-delete-wrap').style.display='none';drawTargetCanvas();return;}
     }
-    // Impact markers
-    const idx = hitTestImpact(x, y);
-    if (idx >= 0) {
-      _tgt.selectedIdx = idx; _tgt.dragging = true; _tgt.dragType = 'impact';
-      const c = imageToCanvas(_tgt.impacts[idx].x, _tgt.impacts[idx].y);
-      _tgt.dragOffsetX = x - c.x; _tgt.dragOffsetY = y - c.y;
-      document.getElementById('tgt-delete-wrap').style.display = '';
-    } else {
-      _tgt.selectedIdx = -1; _tgt.dragging = false; _tgt.dragType = null;
-      document.getElementById('tgt-delete-wrap').style.display = 'none';
-    }
-    drawTargetCanvas();
-    return;
+    const idx=hitTestImpact(x,y);
+    if (idx>=0){_tgt.selectedIdx=idx;_tgt.dragging=true;_tgt.dragType='impact';const c=imageToCanvas(_tgt.impacts[idx].x,_tgt.impacts[idx].y);_tgt.dragOffsetX=x-c.x;_tgt.dragOffsetY=y-c.y;document.getElementById('tgt-delete-wrap').style.display='';}
+    else{_tgt.selectedIdx=-1;_tgt.dragging=false;_tgt.dragType=null;document.getElementById('tgt-delete-wrap').style.display='none';}
+    drawTargetCanvas();return;
   }
 
   if (_tgt.mode === 'poa') {
@@ -2779,32 +2752,21 @@ function onTgtPointerDown(e) {
 function onTgtPointerMove(e) {
   if (!_tgt.dragging) return;
   e.preventDefault();
-  const {x, y} = getCanvasPos(e);
-  const newCx = x - _tgt.dragOffsetX;
-  const newCy = y - _tgt.dragOffsetY;
-  const imgPos = canvasToImage(newCx, newCy);
-
-  if (_tgt.dragType === 'poa') {
-    _tgt.poa = imgPos; drawTargetCanvas(); renderTargetStats(); return;
-  }
-  if (_tgt.dragType === 'scale1') {
-    _tgt.scaleP1 = imgPos; if (_tgt.scaleP2) computeScale(true); drawTargetCanvas(); return;
-  }
-  if (_tgt.dragType === 'scale2') {
-    _tgt.scaleP2 = imgPos; if (_tgt.scaleP1) computeScale(true); drawTargetCanvas(); return;
-  }
-  // Impact drag
-  if (_tgt.selectedIdx < 0) return;
-  _tgt.impacts[_tgt.selectedIdx].x = imgPos.x;
-  _tgt.impacts[_tgt.selectedIdx].y = imgPos.y;
-  drawTargetCanvas(); renderTargetStats();
+  const {x,y}=getCanvasPos(e);
+  const imgPos=canvasToImage(x-_tgt.dragOffsetX,y-_tgt.dragOffsetY);
+  if (_tgt.dragType==='poa'){_tgt.poa=imgPos;drawTargetCanvas();renderTargetStats();return;}
+  if (_tgt.dragType==='scale1'){_tgt.scaleP1=imgPos;if(_tgt.scaleP2)computeScale(true);drawTargetCanvas();return;}
+  if (_tgt.dragType==='scale2'){_tgt.scaleP2=imgPos;if(_tgt.scaleP1)computeScale(true);drawTargetCanvas();return;}
+  if (_tgt.selectedIdx<0) return;
+  _tgt.impacts[_tgt.selectedIdx].x=imgPos.x;_tgt.impacts[_tgt.selectedIdx].y=imgPos.y;
+  drawTargetCanvas();renderTargetStats();
 }
 
 function onTgtPointerUp(e) {
   _tgt.dragging = false;
 }
 
-function computeScale(silent = false) {
+function computeScale(silent=false) {
   const p1 = _tgt.scaleP1, p2 = _tgt.scaleP2;
   if (!p1 || !p2) return;
   const px = Math.sqrt((p2.x-p1.x)**2 + (p2.y-p1.y)**2);
@@ -2818,7 +2780,7 @@ function computeScale(silent = false) {
   const statusEl = document.getElementById('tgt-scale-status');
   if (statusEl) statusEl.textContent = `// SCALE SET: ${_tgt.scale.toFixed(1)} px/in · ${knownDist} ${unit} = ${px.toFixed(0)} px`;
   updateScaleIndicator();
-  if (!silent) { toast(`SCALE SET: ${knownDist} ${unit}`,'success'); setTgtMode('poa'); }
+  if (!silent){toast(`SCALE SET: ${knownDist} ${unit}`,'success');setTgtMode('poa');}
 }
 
 function updateScaleIndicator() {
@@ -2846,10 +2808,7 @@ window.setTgtMode = mode => {
 
 window.setImpactSize = size => {
   _tgt.impactSize = size;
-  ['sm','md','lg'].forEach(s => {
-    const b = document.getElementById(`tgt-sz-${s}`);
-    if (b) b.className = `target-tool-btn${s === size ? ' active' : ''}`;
-  });
+  ['sm','md','lg'].forEach(s=>{const b=document.getElementById(`tgt-sz-${s}`);if(b)b.className=`target-tool-btn${s===size?' active':''}`;});
   drawTargetCanvas();
 };
 
@@ -2904,75 +2863,39 @@ function drawTargetCanvas() {
   }
 
   // ── Impacts ──
-  const IMPACT_R     = _tgt.impactSize === 'sm' ? 10 : _tgt.impactSize === 'lg' ? 26 : 18;
-  const FONT_SZ      = _tgt.impactSize === 'sm' ?  8 : _tgt.impactSize === 'lg' ? 17 : 13;
-  const CHX_GAP      = Math.max(IMPACT_R * 0.38, 4);
+  const IMPACT_R  = _tgt.impactSize==='sm'?10:_tgt.impactSize==='lg'?26:18;
+  const FONT_SZ   = _tgt.impactSize==='sm'? 8:_tgt.impactSize==='lg'?17:13;
+  const CHX_GAP   = Math.max(IMPACT_R*0.38,4);
   const HANDLE_OFFSET = 30;
 
-  _tgt.impacts.forEach((imp, i) => {
-    const c     = imageToCanvas(imp.x, imp.y);
-    const isSel = _tgt.selectedIdx === i;
-    const ring  = isSel ? '#b24c3d' : '#2c5f88';
-    const fill  = isSel ? 'rgba(178,76,61,0.22)' : 'rgba(44,95,136,0.18)';
-
-    // Circle fill + stroke
-    ctx.beginPath(); ctx.arc(c.x, c.y, IMPACT_R, 0, Math.PI*2);
-    ctx.fillStyle = fill; ctx.fill();
-    ctx.strokeStyle = ring; ctx.lineWidth = isSel ? 2.5 : 2; ctx.setLineDash([]); ctx.stroke();
-
-    // Crosshair arms (edge → gap)
-    ctx.strokeStyle = isSel ? 'rgba(178,76,61,0.9)' : 'rgba(44,95,136,0.85)';
-    ctx.lineWidth = 1.5; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(c.x - IMPACT_R, c.y); ctx.lineTo(c.x - CHX_GAP, c.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x + CHX_GAP, c.y); ctx.lineTo(c.x + IMPACT_R, c.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x, c.y - IMPACT_R); ctx.lineTo(c.x, c.y - CHX_GAP); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x, c.y + CHX_GAP); ctx.lineTo(c.x, c.y + IMPACT_R); ctx.stroke();
-
-    // Number (outlined for legibility)
-    ctx.font = `bold ${FONT_SZ}px 'Share Tech Mono', monospace`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2.5;
-    ctx.strokeText(imp.num, c.x, c.y);
-    ctx.fillStyle = isSel ? '#b24c3d' : '#fff';
-    ctx.fillText(imp.num, c.x, c.y);
-
-    // Drag handle (edit mode only)
-    if (_tgt.mode === 'select') {
-      const hx = c.x, hy = c.y + IMPACT_R + HANDLE_OFFSET;
-      ctx.beginPath(); ctx.moveTo(c.x, c.y + IMPACT_R); ctx.lineTo(hx, hy);
-      ctx.strokeStyle = isSel ? '#b24c3d' : 'rgba(44,95,136,0.6)';
-      ctx.lineWidth = 1.5; ctx.setLineDash([3,2]); ctx.stroke(); ctx.setLineDash([]);
-      // Diamond fill
-      ctx.save(); ctx.translate(hx, hy); ctx.rotate(Math.PI/4);
-      ctx.fillStyle = isSel ? '#b24c3d' : '#2c5f88';
-      ctx.fillRect(-7, -7, 14, 14); ctx.restore();
-      // Diamond white border
-      ctx.save(); ctx.translate(hx, hy); ctx.rotate(Math.PI/4);
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.setLineDash([]);
-      ctx.strokeRect(-7, -7, 14, 14); ctx.restore();
+  _tgt.impacts.forEach((imp,i) => {
+    const c=imageToCanvas(imp.x,imp.y),isSel=_tgt.selectedIdx===i;
+    const ring=isSel?'#b24c3d':'#2c5f88',fill=isSel?'rgba(178,76,61,0.22)':'rgba(44,95,136,0.18)';
+    ctx.beginPath();ctx.arc(c.x,c.y,IMPACT_R,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();
+    ctx.strokeStyle=ring;ctx.lineWidth=isSel?2.5:2;ctx.setLineDash([]);ctx.stroke();
+    ctx.strokeStyle=isSel?'rgba(178,76,61,0.9)':'rgba(44,95,136,0.85)';ctx.lineWidth=1.5;ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(c.x-IMPACT_R,c.y);ctx.lineTo(c.x-CHX_GAP,c.y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(c.x+CHX_GAP,c.y);ctx.lineTo(c.x+IMPACT_R,c.y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(c.x,c.y-IMPACT_R);ctx.lineTo(c.x,c.y-CHX_GAP);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(c.x,c.y+CHX_GAP);ctx.lineTo(c.x,c.y+IMPACT_R);ctx.stroke();
+    ctx.font=`bold ${FONT_SZ}px 'Share Tech Mono',monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=2.5;ctx.strokeText(imp.num,c.x,c.y);
+    ctx.fillStyle=isSel?'#b24c3d':'#fff';ctx.fillText(imp.num,c.x,c.y);
+    if (_tgt.mode==='select') {
+      const hx=c.x,hy=c.y+IMPACT_R+HANDLE_OFFSET;
+      ctx.beginPath();ctx.moveTo(c.x,c.y+IMPACT_R);ctx.lineTo(hx,hy);
+      ctx.strokeStyle=isSel?'#b24c3d':'rgba(44,95,136,0.6)';ctx.lineWidth=1.5;ctx.setLineDash([3,2]);ctx.stroke();ctx.setLineDash([]);
+      ctx.save();ctx.translate(hx,hy);ctx.rotate(Math.PI/4);ctx.fillStyle=isSel?'#b24c3d':'#2c5f88';ctx.fillRect(-7,-7,14,14);ctx.restore();
+      ctx.save();ctx.translate(hx,hy);ctx.rotate(Math.PI/4);ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.strokeRect(-7,-7,14,14);ctx.restore();
     }
-    // No canvas X button — use DELETE SELECTED button in UI instead
+    // No canvas X — use DELETE SELECTED button in UI
   });
 
-  // ── Edit-mode drag handles for POA and scale reference points ──
-  if (_tgt.mode === 'select') {
-    // POA: pulsing ring to signal draggable
-    if (_tgt.poa) {
-      const c = imageToCanvas(_tgt.poa.x, _tgt.poa.y);
-      const isDragging = _tgt.dragging && _tgt.dragType === 'poa';
-      ctx.beginPath(); ctx.arc(c.x, c.y, 16, 0, Math.PI*2);
-      ctx.strokeStyle = isDragging ? 'rgba(0,230,118,1)' : 'rgba(0,230,118,0.5)';
-      ctx.lineWidth = isDragging ? 2.5 : 1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
-    }
-    // Scale points: dashed ring
-    [{pt: _tgt.scaleP1, type: 'scale1'}, {pt: _tgt.scaleP2, type: 'scale2'}].forEach(({pt, type}) => {
-      if (!pt) return;
-      const c = imageToCanvas(pt.x, pt.y);
-      const isDragging = _tgt.dragging && _tgt.dragType === type;
-      ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2);
-      ctx.strokeStyle = isDragging ? 'rgba(255,215,0,1)' : 'rgba(255,215,0,0.5)';
-      ctx.lineWidth = isDragging ? 2.5 : 1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
-    });
+  // ── Edit-mode: draggable rings on POA + scale points ──
+  if (_tgt.mode==='select') {
+    if (_tgt.poa){const c=imageToCanvas(_tgt.poa.x,_tgt.poa.y),drag=_tgt.dragging&&_tgt.dragType==='poa';ctx.beginPath();ctx.arc(c.x,c.y,16,0,Math.PI*2);ctx.strokeStyle=drag?'rgba(0,230,118,1)':'rgba(0,230,118,0.5)';ctx.lineWidth=drag?2.5:1.5;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);}
+    [{pt:_tgt.scaleP1,type:'scale1'},{pt:_tgt.scaleP2,type:'scale2'}].forEach(({pt,type})=>{if(!pt)return;const c=imageToCanvas(pt.x,pt.y),drag=_tgt.dragging&&_tgt.dragType===type;ctx.beginPath();ctx.arc(c.x,c.y,14,0,Math.PI*2);ctx.strokeStyle=drag?'rgba(255,215,0,1)':'rgba(255,215,0,0.5)';ctx.lineWidth=drag?2.5:1.5;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);});
   }
 
   // ── Group circle (smallest enclosing circle approx) ──
@@ -3132,6 +3055,7 @@ window.exportTargetSession = async () => {
     type: 'target_session',
     version: 1,
     exported_at: new Date().toISOString(),
+    session_name: _tgt.sessionName || _tgt.batchId || null,
     batch_id: _tgt.batchId || null,
     range_date: _tgt.rangeDate,
     distance: _tgt.distYds,
@@ -3154,7 +3078,8 @@ window.exportTargetSession = async () => {
   };
   const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
   const date = new Date().toISOString().slice(0,10);
-  const filename = `target-${_tgt.batchId||'session'}-${date}.json`;
+  const _expLabel = (_tgt.sessionName || _tgt.batchId || 'session').replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  const filename = `target-${_expLabel}-${date}.json`;
   if (navigator.share) {
     try {
       const file = new File([blob], filename, {type:'application/json'});
