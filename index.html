@@ -263,6 +263,10 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .rc-velo-display{font-size:20px;font-weight:700;color:var(--muted);font-family:'Share Tech Mono',monospace;}
 .rc-velo-display.has-val{color:var(--success);}
 .rc-velo-unit{font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px;}
+.rc-velo-expected{font-size:11px;color:var(--info);letter-spacing:.5px;margin-top:3px;font-family:'Share Tech Mono',monospace;font-weight:700;}
+.rc-velo-expected .rc-exp-delta{display:block;font-size:10px;font-weight:700;letter-spacing:.5px;margin-top:1px;}
+.rc-velo-expected .rc-exp-delta.pos{color:var(--success);}
+.rc-velo-expected .rc-exp-delta.neg{color:var(--danger);}
 .rc-tap-hint{font-size:9px;color:var(--border2);margin-top:3px;letter-spacing:1px;}
 .rc-commit-bar{padding:14px 16px;background:var(--surface);border-top:2px solid var(--border);}
 .shot-detail-overlay{position:fixed;inset:0;background:var(--bg);
@@ -303,6 +307,17 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .det-velo-input::placeholder{color:var(--border2);}
 .det-velo-input.filled{color:var(--success);}
 .det-velo-fps{font-size:14px;font-weight:700;color:var(--muted2);margin-top:4px;letter-spacing:3px;}
+.det-exp-wrap{background:var(--surface);border:2px solid var(--border2);border-left:4px solid var(--info);
+  padding:14px 16px;text-align:center;margin-bottom:12px;}
+.det-exp-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:var(--muted2);margin-bottom:6px;font-family:'Barlow Condensed',sans-serif;}
+.det-exp-value{font-size:34px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--info);line-height:1;}
+.det-exp-value .det-exp-unit{font-size:12px;font-weight:700;color:var(--muted2);margin-left:6px;letter-spacing:2px;}
+.det-exp-source{font-size:9px;font-weight:600;letter-spacing:1px;color:var(--muted2);margin-top:6px;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;}
+.det-exp-delta{font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);}
+.det-exp-delta.pos{color:var(--success);}
+.det-exp-delta.neg{color:var(--danger);}
+.det-exp-delta .det-exp-delta-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);text-transform:uppercase;display:block;margin-bottom:2px;font-family:'Barlow Condensed',sans-serif;}
 .det-notes-wrap{background:var(--surface);border:1px solid var(--border);
   border-left:3px solid var(--border2);padding:14px;margin-bottom:12px;}
 .det-notes-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
@@ -2221,15 +2236,21 @@ routes['range-card'] = async ({id}) => {
     batchId: id,
     cartridges,
     shots: cartridges.map((_,i)=>{ const e=(batch.shots||[])[i]; return {velocity:e?.velocity||0,field_notes:e?.field_notes||''}; }),
+    _batch: batch,
+    _firearms: firearms,
   };
 
   const fOpts=firearms.map(f=>{const bl=f.barrel_length?(f.barrel_length+'in'):'?in';return `<option value="${f.name}" ${f.name===batch.firearm_id?'selected':''}>${f.name} (${bl})</option>`;}).join('');
+
+  const currentFirearm = firearms.find(f=>f.name===batch.firearm_id) || null;
 
   let shotRowsHtml='', lastGroup=null;
   cartridges.forEach((c,i)=>{
     const existing=existingShots[i];
     const hasVelo=existing&&existing.velocity>0;
     const veloVal=hasVelo?Math.round(existing.velocity):'';
+    const expFps=adjVelo(batch,currentFirearm,bookVeloForRound(batch,c));
+    const expDelta=hasVelo&&expFps!=null?Math.round(existing.velocity-expFps):null;
     if (isGrouped&&c.group_label&&c.group_label!==lastGroup) {
       shotRowsHtml+=`<div class="rc-group-header"><div class="rc-group-title">${c.group_label}</div><div class="rc-group-params">${c.charge!=null?c.charge+' gr':''}${c.coal!=null?' · '+fmt(c.coal,3)+'"':''}${c.jump!=null?' · jump '+fmt(c.jump,3)+'"':''}</div></div>`;
       lastGroup=c.group_label;
@@ -2244,6 +2265,7 @@ routes['range-card'] = async ({id}) => {
       <div class="rc-shot-right">
         <div class="rc-velo-display ${hasVelo?'has-val':''}" id="rc-velo-disp-${i}">${veloVal||'—'}</div>
         <div class="rc-velo-unit">fps</div>
+        <div class="rc-velo-expected" id="rc-exp-${i}">EXP ${expFps!=null?expFps:'—'}${expDelta!=null?`<span class="rc-exp-delta ${expDelta>=0?'pos':'neg'}">${expDelta>=0?'+':''}${expDelta} fps</span>`:''}</div>
         <div class="rc-tap-hint">TAP TO ENTER</div>
       </div>
     </div>`;
@@ -2344,8 +2366,34 @@ window.onRangeFirearmChange = async batchId => {
   const batch=await dbGet('batches',batchId);
   const sel=document.getElementById('rc-firearm-sel'); if (!sel) return;
   const firearms=await dbGetAll('firearms');
-  updateRangeRDSBar(batch, firearms.find(f=>f.name===sel.value)||null);
+  const fa=firearms.find(f=>f.name===sel.value)||null;
+  updateRangeRDSBar(batch, fa);
+  refreshAllRowExpected(batch, fa);
 };
+
+function refreshAllRowExpected(batch, firearm) {
+  const cartridges=generateCartridges(batch);
+  cartridges.forEach((c,i)=>{
+    const expFps=adjVelo(batch,firearm,bookVeloForRound(batch,c));
+    const liveV=_rcSession.shots[i]?.velocity||0;
+    const delta=liveV>0&&expFps!=null?Math.round(liveV-expFps):null;
+    const el=document.getElementById(`rc-exp-${i}`);
+    if (el) el.innerHTML=`EXP ${expFps!=null?expFps:'—'}${delta!=null?`<span class="rc-exp-delta ${delta>=0?'pos':'neg'}">${delta>=0?'+':''}${delta} fps</span>`:''}`;
+  });
+}
+function refreshRowExpected(idx) {
+  const batch=_rcSession._batch||window._currentDetailBatch;
+  if (!batch) return;
+  const sel=document.getElementById('rc-firearm-sel');
+  const fas=_rcSession._firearms||[];
+  const fa=(sel&&sel.value)?(fas.find(f=>f.name===sel.value)||null):(window._currentDetailFirearm||null);
+  const c=(generateCartridges(batch))[idx]; if (!c) return;
+  const expFps=adjVelo(batch,fa,bookVeloForRound(batch,c));
+  const liveV=_rcSession.shots[idx]?.velocity||0;
+  const delta=liveV>0&&expFps!=null?Math.round(liveV-expFps):null;
+  const el=document.getElementById(`rc-exp-${idx}`);
+  if (el) el.innerHTML=`EXP ${expFps!=null?expFps:'—'}${delta!=null?`<span class="rc-exp-delta ${delta>=0?'pos':'neg'}">${delta>=0?'+':''}${delta} fps</span>`:''}`;
+}
 
 // ── Shot Detail ──
 window.openShotDetail = async (batchId, idx) => {
@@ -2387,6 +2435,16 @@ window.openShotDetail = async (batchId, idx) => {
           onfocus="document.getElementById('det-velo-wrap').classList.add('active')"
           onblur="document.getElementById('det-velo-wrap').classList.remove('active')">
         <div class="det-velo-fps">FPS</div>
+      </div>
+
+      <div class="det-exp-wrap" id="det-exp-wrap">
+        <div class="det-exp-label">Expected MV</div>
+        <div class="det-exp-value">${av!=null?av:'—'}<span class="det-exp-unit">FPS</span></div>
+        <div class="det-exp-source">${firearm?.barrel_length&&batch.rds_barrel_length?`${firearm.barrel_length}" vs ${batch.rds_barrel_length}" RDS · ${c.charge!=null?c.charge+' gr':batch.charge_fixed!=null?batch.charge_fixed+' gr':'charge —'}`:'barrel data missing'}</div>
+        <div class="det-exp-delta ${hasVelo&&av!=null?(shot.velocity-av>=0?'pos':'neg'):''}" id="det-exp-delta" style="${hasVelo&&av!=null?'':'display:none'}">
+          <span class="det-exp-delta-lbl">Δ vs Expected</span>
+          ${hasVelo&&av!=null?`${shot.velocity-av>=0?'+':''}${Math.round(shot.velocity-av)} fps`:''}
+        </div>
       </div>
 
       <div class="det-notes-wrap">
@@ -2448,6 +2506,8 @@ window.openShotDetail = async (batchId, idx) => {
   window._currentDetailBatchId=batchId;
   window._currentDetailBatch=batch;
   window._currentDetailCartridges=cartridges;
+  window._currentDetailFirearm=firearm;
+  window._currentDetailAv=av;
 };
 
 window.onDetVeloInput = idx => {
@@ -2458,6 +2518,21 @@ window.onDetVeloInput = idx => {
   if (!_rcSession.shots[idx]) _rcSession.shots[idx]={velocity:0,field_notes:''};
   _rcSession.shots[idx].velocity=hasVal?v:0;
   updateRangeLiveStats();
+  // Live update Expected-MV delta block
+  const av=window._currentDetailAv;
+  const deltaEl=document.getElementById('det-exp-delta');
+  if (deltaEl) {
+    if (hasVal && av!=null) {
+      const d=Math.round(v-av);
+      deltaEl.style.display='';
+      deltaEl.classList.remove('pos','neg');
+      deltaEl.classList.add(d>=0?'pos':'neg');
+      deltaEl.innerHTML=`<span class="det-exp-delta-lbl">Δ vs Expected</span>${d>=0?'+':''}${d} fps`;
+    } else {
+      deltaEl.style.display='none';
+    }
+  }
+  refreshRowExpected(idx);
 };
 
 function _saveShotDetailToSession(idx) {
@@ -2473,6 +2548,7 @@ function _saveShotDetailToSession(idx) {
   if (disp){disp.textContent=v>0?Math.round(v):'—';disp.classList.toggle('has-val',v>0);}
   if (numEl) numEl.classList.toggle('fired',v>0);
   if (rowEl) rowEl.classList.toggle('has-velo',v>0);
+  refreshRowExpected(idx);
 }
 window.navShotDetail = newIdx => { _saveShotDetailToSession(window._currentDetailIdx); updateRangeLiveStats(); document.getElementById('shot-detail-overlay')?.remove(); openShotDetail(window._currentDetailBatchId,newIdx); };
 window.saveShotDetail = idx => { _saveShotDetailToSession(idx); updateRangeLiveStats(); document.getElementById('shot-detail-overlay')?.remove(); };
@@ -2541,6 +2617,7 @@ window.applyGarminCSVToCard = async batchId => {
     if (disp){disp.textContent=Math.round(s.velocity);disp.classList.add('has-val');}
     document.getElementById(`rc-num-${i}`)?.classList.add('fired');
     document.getElementById(`rc-row-${i}`)?.classList.add('has-velo');
+    refreshRowExpected(i);
   });
   document.getElementById('rc-csv-overlay').remove();
   updateRangeLiveStats();
