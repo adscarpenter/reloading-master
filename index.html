@@ -2240,16 +2240,26 @@ routes['range-card'] = async ({id}) => {
     _firearms: firearms,
   };
 
-  const fOpts=firearms.map(f=>{const bl=f.barrel_length?(f.barrel_length+'in'):'?in';return `<option value="${f.name}" ${f.name===batch.firearm_id?'selected':''}>${f.name} (${bl})</option>`;}).join('');
+  // Determine if batch is in manual-entry mode: firearm_id doesn't match any registered firearm
+  const matchedFirearm = firearms.find(f=>f.name===batch.firearm_id) || null;
+  // If no firearm_id at all and no manual barrel saved, default to first firearm (legacy behavior)
+  const isManualMode = !matchedFirearm && (batch.range_barrel_length!=null || firearms.length===0 || batch.firearm_id==='__manual__');
+  const currentFirearm = matchedFirearm || (firearms.length && !isManualMode ? firearms[0] : null);
 
-  const currentFirearm = firearms.find(f=>f.name===batch.firearm_id) || null;
+  const fOpts = `<option value="__manual__" ${isManualMode?'selected':''}>— Manual Entry —</option>` +
+    firearms.map(f=>{const bl=f.barrel_length?(f.barrel_length+'in'):'?in';return `<option value="${f.name}" ${currentFirearm&&f.name===currentFirearm.name?'selected':''}>${f.name} (${bl})</option>`;}).join('');
+
+  // Effective firearm at initial render — used to compute EXP MV per row
+  const effectiveFirearmAtRender = isManualMode
+    ? (batch.range_barrel_length!=null ? {name: batch.range_firearm_label||'Manual', barrel_length: batch.range_barrel_length} : null)
+    : currentFirearm;
 
   let shotRowsHtml='', lastGroup=null;
   cartridges.forEach((c,i)=>{
     const existing=existingShots[i];
     const hasVelo=existing&&existing.velocity>0;
     const veloVal=hasVelo?Math.round(existing.velocity):'';
-    const expFps=adjVelo(batch,currentFirearm,bookVeloForRound(batch,c));
+    const expFps=adjVelo(batch,effectiveFirearmAtRender,bookVeloForRound(batch,c));
     const expDelta=hasVelo&&expFps!=null?Math.round(existing.velocity-expFps):null;
     if (isGrouped&&c.group_label&&c.group_label!==lastGroup) {
       shotRowsHtml+=`<div class="rc-group-header"><div class="rc-group-title">${c.group_label}</div><div class="rc-group-params">${c.charge!=null?c.charge+' gr':''}${c.coal!=null?' · '+fmt(c.coal,3)+'"':''}${c.jump!=null?' · jump '+fmt(c.jump,3)+'"':''}</div></div>`;
@@ -2286,6 +2296,12 @@ routes['range-card'] = async ({id}) => {
           <select class="form-control" id="rc-firearm-sel" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px" onchange="onRangeFirearmChange('${id}')">
             ${fOpts}
           </select>
+          <div id="rc-manual-fields" style="display:${isManualMode?'block':'none'}">
+            <div class="rc-label" style="margin-top:8px">Label <span style="font-size:9px;color:var(--muted2);font-weight:600;letter-spacing:.5px">— OPTIONAL</span></div>
+            <input class="form-control" id="rc-manual-label" type="text" placeholder="Loaner, scratch build, etc" value="${isManualMode?(batch.range_firearm_label||''):''}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+            <div class="rc-label" style="margin-top:8px">Barrel Length (in) <span style="font-size:9px;color:var(--danger);font-weight:600;letter-spacing:.5px">— REQUIRED</span></div>
+            <input class="form-control" id="rc-manual-barrel" type="number" inputmode="decimal" step="0.5" value="${isManualMode?(batch.range_barrel_length??''):''}" oninput="onRangeBarrelChange()" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+          </div>
         </div>
         <div style="padding:10px 14px">
           <div class="rc-label">Range Date</div>
@@ -2345,8 +2361,8 @@ routes['range-card'] = async ({id}) => {
     </div>
   `);
 
-  const fa = firearms.find(f=>f.name===batch.firearm_id)||null;
-  updateRangeRDSBar(batch, fa);
+  // Use effective firearm so the RDS bar reflects any per-batch barrel override
+  updateRangeRDSBar(batch, getEffectiveRangeFirearm());
   updateRangeLiveStats();
 };
 
@@ -2362,19 +2378,45 @@ function updateRangeRDSBar(batch, firearm) {
     <div><div class="rc-label">Barrel Adj</div><div style="font-size:13px;font-weight:700;margin-top:2px;font-family:'Share Tech Mono',monospace;color:${diff!=null?(diff>=0?'var(--success)':'var(--danger)'):'var(--muted2)'}">${adjLabel}</div></div>
   </div>`;
 }
+// Build effective firearm using DOM state. Two modes:
+//   1) Registered firearm selected → return that firearm
+//   2) Manual entry selected → return synthetic {name, barrel_length} from manual inputs
+function getEffectiveRangeFirearm() {
+  const sel=document.getElementById('rc-firearm-sel');
+  if (!sel) return null;
+  if (sel.value === '__manual__') {
+    const blEl=document.getElementById('rc-manual-barrel');
+    const bl = blEl && blEl.value!=='' ? parseFloat(blEl.value) : NaN;
+    if (isNaN(bl)) return null;
+    const labelEl=document.getElementById('rc-manual-label');
+    const label = labelEl?.value?.trim() || 'Manual';
+    return { name: label, barrel_length: bl };
+  }
+  const fas=_rcSession._firearms||[];
+  return fas.find(f=>f.name===sel.value) || null;
+}
+
 window.onRangeFirearmChange = async batchId => {
-  const batch=await dbGet('batches',batchId);
   const sel=document.getElementById('rc-firearm-sel'); if (!sel) return;
-  const firearms=await dbGetAll('firearms');
-  const fa=firearms.find(f=>f.name===sel.value)||null;
-  updateRangeRDSBar(batch, fa);
-  refreshAllRowExpected(batch, fa);
+  const manualFields=document.getElementById('rc-manual-fields');
+  const isManual = sel.value === '__manual__';
+  if (manualFields) manualFields.style.display = isManual ? 'block' : 'none';
+  const batch = _rcSession._batch || (await dbGet('batches',batchId));
+  updateRangeRDSBar(batch, getEffectiveRangeFirearm());
+  refreshAllRowExpected(batch);
 };
 
-function refreshAllRowExpected(batch, firearm) {
+window.onRangeBarrelChange = () => {
+  const batch=_rcSession._batch; if (!batch) return;
+  updateRangeRDSBar(batch, getEffectiveRangeFirearm());
+  refreshAllRowExpected(batch);
+};
+
+function refreshAllRowExpected(batch) {
+  const fa=getEffectiveRangeFirearm();
   const cartridges=generateCartridges(batch);
   cartridges.forEach((c,i)=>{
-    const expFps=adjVelo(batch,firearm,bookVeloForRound(batch,c));
+    const expFps=adjVelo(batch,fa,bookVeloForRound(batch,c));
     const liveV=_rcSession.shots[i]?.velocity||0;
     const delta=liveV>0&&expFps!=null?Math.round(liveV-expFps):null;
     const el=document.getElementById(`rc-exp-${i}`);
@@ -2384,9 +2426,7 @@ function refreshAllRowExpected(batch, firearm) {
 function refreshRowExpected(idx) {
   const batch=_rcSession._batch||window._currentDetailBatch;
   if (!batch) return;
-  const sel=document.getElementById('rc-firearm-sel');
-  const fas=_rcSession._firearms||[];
-  const fa=(sel&&sel.value)?(fas.find(f=>f.name===sel.value)||null):(window._currentDetailFirearm||null);
+  const fa=getEffectiveRangeFirearm();
   const c=(generateCartridges(batch))[idx]; if (!c) return;
   const expFps=adjVelo(batch,fa,bookVeloForRound(batch,c));
   const liveV=_rcSession.shots[idx]?.velocity||0;
@@ -2399,8 +2439,8 @@ function refreshRowExpected(idx) {
 window.openShotDetail = async (batchId, idx) => {
   const batch=await dbGet('batches',batchId);
   const firearms=await dbGetAll('firearms');
-  const sel=document.getElementById('rc-firearm-sel');
-  const firearm=sel?firearms.find(f=>f.name===sel.value)||null:firearms.find(f=>f.name===batch.firearm_id)||null;
+  // Use effective firearm so the manual barrel override on the Range Card propagates into shot detail's EXP MV
+  const firearm=getEffectiveRangeFirearm()||firearms.find(f=>f.name===batch.firearm_id)||null;
   const cartridges=generateCartridges(batch);
   const c=cartridges[idx];
   const shot=_rcSession.shots[idx]||{velocity:0,field_notes:''};
@@ -2578,7 +2618,22 @@ window.commitRangeSession = async batchId => {
   const validShots=shots.filter(s=>s.velocity>0);
   if (!validShots.length){toast('NO VELOCITIES ENTERED','error');return;}
   const rangeDate=document.getElementById('rc-range-date')?.value||new Date().toISOString().slice(0,10);
-  const sel=document.getElementById('rc-firearm-sel'); if (sel&&sel.value) batch.firearm_id=sel.value;
+  const sel=document.getElementById('rc-firearm-sel');
+  if (sel) {
+    if (sel.value === '__manual__') {
+      const labelEl=document.getElementById('rc-manual-label');
+      const blEl=document.getElementById('rc-manual-barrel');
+      const bl = blEl && blEl.value!=='' ? parseFloat(blEl.value) : NaN;
+      if (isNaN(bl) || bl<=0) { toast('BARREL LENGTH REQUIRED FOR MANUAL ENTRY','error'); return; }
+      batch.firearm_id = '';
+      batch.range_firearm_label = labelEl?.value?.trim() || '';
+      batch.range_barrel_length = bl;
+    } else if (sel.value) {
+      batch.firearm_id = sel.value;
+      batch.range_firearm_label = '';
+      batch.range_barrel_length = null;
+    }
+  }
   batch.range_conditions={
     temp_f:    parseFloat(document.getElementById('rc-env-temp')?.value)||59,
     humidity:  parseFloat(document.getElementById('rc-env-hum')?.value)||50,
