@@ -269,6 +269,17 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .rc-velo-expected .rc-exp-delta.neg{color:var(--danger);}
 .rc-tap-hint{font-size:9px;color:var(--border2);margin-top:3px;letter-spacing:1px;}
 .rc-commit-bar{padding:14px 16px;background:var(--surface);border-top:2px solid var(--border);}
+.rc-sessions-bar{border-bottom:2px solid var(--accent);background:var(--surface2);}
+.rc-sessions-bar-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px 4px;}
+.rc-sessions-scroll{display:flex;gap:8px;overflow-x:auto;padding:6px 14px 10px;scrollbar-width:none;}
+.rc-sessions-scroll::-webkit-scrollbar{display:none;}
+.rc-session-chip{flex-shrink:0;min-width:72px;padding:6px 10px;border:1.5px solid var(--border2);cursor:pointer;text-align:center;}
+.rc-session-chip:active{background:rgba(44,95,136,.06);}
+.rc-session-chip.active{border-color:var(--accent);background:rgba(44,95,136,.06);}
+.rc-session-chip-num{font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;}
+.rc-session-chip.active .rc-session-chip-num{color:var(--accent);}
+.rc-session-chip-date{font-size:12px;font-weight:700;color:var(--text);font-family:'Share Tech Mono',monospace;margin-top:2px;}
+.rc-session-chip-stats{font-size:10px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px;}
 .shot-detail-overlay{position:fixed;inset:0;background:var(--bg);
   z-index:250;display:flex;flex-direction:column;overflow:hidden;}
 .shot-detail-header{background:var(--surface);border-bottom:2px solid var(--border);
@@ -2044,9 +2055,44 @@ window.checkAllLoaded = async batchId => {
 
 function renderChronoTab(batch) {
   const el=document.getElementById('tab-chrono'); if (!el) return;
-  const shots=batch.shots||[], validShots=shots.filter(s=>s.velocity>0);
+  const sessions=getSessionsForBatch(batch);
+  const rcBtn=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>`;
+
+  if (sessions.length>1) {
+    // Multi-session: overall summary + per-session cards
+    const allValid=sessions.flatMap(s=>s.shots.filter(x=>x.velocity>0));
+    const overall=allValid.length?calcStats(allValid.map(s=>s.velocity)):null;
+    let html=overall?`<div class="stat-grid" style="margin-bottom:14px">
+      <div class="stat-box hi"><div class="s-label">TOTAL AVG</div><div class="s-val">${Math.round(overall.avg)}</div><div class="s-unit">FPS · ${allValid.length} SHOTS</div></div>
+      <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" style="color:var(--success)">${fmt(overall.sd,1)}</div><div class="s-unit">FPS</div></div>
+      <div class="stat-box"><div class="s-label">ES</div><div class="s-val">${fmt(overall.es,1)}</div><div class="s-unit">FPS</div></div>
+    </div>`:'';
+    sessions.forEach((s,idx)=>{
+      const sv=s.shots.filter(x=>x.velocity>0);
+      const st=sv.length?calcStats(sv.map(x=>x.velocity)):null;
+      html+=`<div class="card" style="margin-bottom:10px">
+        <div class="card-header"><div class="marker"></div><h3>Session ${idx+1}</h3><div class="hdr-tag">${fmtDate(s.date)}</div>${mkBtnSm('DELETE','btn-secondary',`clearSession('${batch.id}',${s.id})`, 'trash')}</div>
+        ${st?`<div style="display:grid;grid-template-columns:repeat(3,1fr);padding:8px 14px;border-bottom:1px solid var(--border)">
+          <div><div class="rc-label">AVG</div><div style="font-size:18px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--text);margin-top:2px">${Math.round(st.avg)} fps</div></div>
+          <div><div class="rc-label">SD</div><div style="font-size:18px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--success);margin-top:2px">${fmt(st.sd,1)} fps</div></div>
+          <div><div class="rc-label">ES</div><div style="font-size:18px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--text);margin-top:2px">${fmt(st.es,1)} fps</div></div>
+        </div>
+        <div style="padding:0 0 4px"><table class="shot-table">
+          <thead><tr><th>#</th><th>FPS</th><th>Δ AVG</th><th>Notes</th></tr></thead>
+          <tbody>${s.shots.map((sv2,j)=>{if(!sv2.velocity)return'';const d=sv2.velocity-st.avg;return `<tr><td>${j+1}</td><td style="font-weight:700;color:var(--text)">${Math.round(sv2.velocity)}</td><td class="${d>=0?'delta-pos':'delta-neg'}">${d>=0?'+':''}${fmt(d,1)}</td><td style="font-size:12px;color:var(--muted2)">${sv2.field_notes||''}</td></tr>`;}).join('')}</tbody>
+        </table></div>`:`<p style="padding:10px 14px;font-size:13px;color:var(--muted2);font-family:'Share Tech Mono',monospace">// NO VELOCITY DATA</p>`}
+      </div>`;
+    });
+    el.innerHTML=html+rcBtn;
+    return;
+  }
+
+  // Single session / no sessions — original layout
+  const shots=sessions[0]?.shots||batch.shots||[];
+  const validShots=shots.filter(s=>s.velocity>0);
   const stats=validShots.length?calcStats(validShots.map(s=>s.velocity)):null;
-  el.innerHTML=validShots.length?`
+  const rangeDate=sessions[0]?.date||batch.range_date;
+  el.innerHTML=(validShots.length?`
     <div class="stat-grid" style="margin-bottom:14px">
       <div class="stat-box hi"><div class="s-label">AVG</div><div class="s-val">${Math.round(stats.avg)}</div><div class="s-unit">FPS</div></div>
       <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" style="color:var(--success)">${fmt(stats.sd,1)}</div><div class="s-unit">FPS</div></div>
@@ -2058,15 +2104,32 @@ function renderChronoTab(batch) {
         <tbody>${shots.map((s,i)=>{if(!s.velocity)return''; const d=stats?s.velocity-stats.avg:0; return `<tr><td>${i+1}</td><td style="font-weight:700;color:var(--text)">${Math.round(s.velocity)}</td><td class="${d>=0?'delta-pos':'delta-neg'}">${d>=0?'+':''}${fmt(d,1)}</td><td style="font-size:12px;color:var(--muted2)">${s.field_notes||''}</td></tr>`; }).join('')}</tbody>
       </table></div>
     </div>` :
-    `<p class="text-muted" style="font-size:14px;margin-bottom:16px;font-family:'Share Tech Mono',monospace">// NO VELOCITY DATA — USE RANGE CARD TO RECORD SHOTS</p>`;
-  el.innerHTML+=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>
-    ${batch.range_date?`<p class="text-muted" style="font-size:12px;margin-top:10px;font-family:'Share Tech Mono',monospace">// RANGE DATE: ${fmtDate(batch.range_date)}</p>`:''}`;
+    `<p class="text-muted" style="font-size:14px;margin-bottom:16px;font-family:'Share Tech Mono',monospace">// NO VELOCITY DATA — USE RANGE CARD TO RECORD SHOTS</p>`)+
+  rcBtn+(rangeDate?`<p class="text-muted" style="font-size:12px;margin-top:10px;font-family:'Share Tech Mono',monospace">// RANGE DATE: ${fmtDate(rangeDate)}</p>`:'');
 }
 window.clearShots = async batchId => {
   if (!confirm_('Clear all shot data?')) return;
   const batch=await dbGet('batches',batchId);
   batch.shots=[]; batch.range_date=null;
+  // Also clear the most recent session in range_sessions if present
+  if (batch.range_sessions?.length) {
+    batch.range_sessions[batch.range_sessions.length-1].shots=[];
+  }
   await dbPut('batches',batch); renderChronoTab(batch); toast('SHOTS CLEARED');
+};
+window.clearSession = async (batchId, sessionId) => {
+  if (!confirm_('Delete this session?')) return;
+  const batch=await dbGet('batches',batchId);
+  batch.range_sessions=(batch.range_sessions||[]).filter(s=>s.id!==sessionId);
+  // Update legacy flat fields to reflect remaining sessions
+  const remaining=batch.range_sessions;
+  if (remaining.length) {
+    const last=remaining[remaining.length-1];
+    batch.shots=last.shots; batch.range_date=last.date; batch.range_conditions=last.conditions;
+  } else {
+    batch.shots=[]; batch.range_date=null; batch.range_conditions=null;
+  }
+  await dbPut('batches',batch); renderChronoTab(batch); toast('SESSION DELETED');
 };
 
 async function renderDropTab(batch) {
@@ -2216,7 +2279,17 @@ window.deleteBatch = async batchId => {
 // ════════════════════════════════════════════════════
 //  RANGE CARD
 // ════════════════════════════════════════════════════
-let _rcSession = { batchId:null, cartridges:[], shots:[] };
+let _rcSession = { batchId:null, cartridges:[], shots:[], sessionId:null, dirty:false };
+let _pendingSessionId = undefined; // undefined=default(resume last); null=new session; number=specific session id
+
+function getSessionsForBatch(batch) {
+  if (batch.range_sessions?.length) return batch.range_sessions;
+  // Migrate legacy single-session fields into the sessions format on first read
+  if (batch.shots?.filter(s=>s.velocity>0).length) {
+    return [{id:1, date:batch.range_date||batch.created_at?.slice(0,10)||new Date().toISOString().slice(0,10), firearm_id:batch.firearm_id||'', range_firearm_label:batch.range_firearm_label||'', range_barrel_length:batch.range_barrel_length??null, conditions:batch.range_conditions||null, shots:batch.shots||[]}];
+  }
+  return [];
+}
 
 routes['range-card'] = async ({id}) => {
   if (!id){navigate('batches');return;}
@@ -2228,33 +2301,62 @@ routes['range-card'] = async ({id}) => {
   document.getElementById('back-btn').onclick=()=>{ if (confirm_('Leave? Unsaved changes will be lost.')) navigate('batch/'+id); };
 
   const cartridges=generateCartridges(batch);
-  const existingShots=batch.shots||[];
   const isGrouped=batch.group_mode&&batch.group_mode!=='none';
 
-  // Init session
-  _rcSession = {
-    batchId: id,
+  // Session management — determine which session to edit
+  const sessions=getSessionsForBatch(batch);
+  const pendingId=_pendingSessionId;
+  _pendingSessionId=undefined;
+  let activeSession=null;
+  if (pendingId===null) {
+    activeSession=null; // explicit new session
+  } else if (pendingId!==undefined) {
+    activeSession=sessions.find(s=>s.id===pendingId)||null;
+  } else if (sessions.length>0) {
+    activeSession=sessions[sessions.length-1]; // default: resume most recent
+  }
+
+  // Init in-memory session state
+  _rcSession={
+    batchId:id,
     cartridges,
-    shots: cartridges.map((_,i)=>{ const e=(batch.shots||[])[i]; return {velocity:e?.velocity||0,field_notes:e?.field_notes||''}; }),
-    _batch: batch,
-    _firearms: firearms,
+    shots:cartridges.map((_,i)=>{const e=(activeSession?.shots||[])[i];return {velocity:e?.velocity||0,field_notes:e?.field_notes||''};}),
+    sessionId:activeSession?.id??Date.now(),
+    dirty:false,
+    _batch:batch,
+    _firearms:firearms,
   };
 
-  // Determine if batch is in manual-entry mode: firearm_id doesn't match any registered firearm
-  const matchedFirearm = firearms.find(f=>f.name===batch.firearm_id) || null;
-  // If no firearm_id at all and no manual barrel saved, default to first firearm (legacy behavior)
-  const isManualMode = !matchedFirearm && (batch.range_barrel_length!=null || firearms.length===0 || batch.firearm_id==='__manual__');
-  const currentFirearm = matchedFirearm || (firearms.length && !isManualMode ? firearms[0] : null);
+  // Effective metadata for this session (session overrides legacy batch fields)
+  const effFirearmId=activeSession?.firearm_id??batch.firearm_id;
+  const effRangeLabel=activeSession?.range_firearm_label??batch.range_firearm_label;
+  const effBarrelLen=activeSession?.range_barrel_length??batch.range_barrel_length;
+  const effConditions=activeSession?.conditions??batch.range_conditions;
+  const effDate=activeSession?.date??new Date().toISOString().slice(0,10);
 
-  const fOpts = `<option value="__manual__" ${isManualMode?'selected':''}>— Manual Entry —</option>` +
+  const matchedFirearm=firearms.find(f=>f.name===effFirearmId)||null;
+  const isManualMode=!matchedFirearm&&(effBarrelLen!=null||firearms.length===0||effFirearmId==='__manual__');
+  const currentFirearm=matchedFirearm||(firearms.length&&!isManualMode?firearms[0]:null);
+  const effectiveFirearmAtRender=isManualMode?(effBarrelLen!=null?{name:effRangeLabel||'Manual',barrel_length:effBarrelLen}:null):currentFirearm;
+
+  const fOpts=`<option value="__manual__" ${isManualMode?'selected':''}>— Manual Entry —</option>`+
     firearms.map(f=>{const bl=f.barrel_length?(f.barrel_length+'in'):'?in';return `<option value="${f.name}" ${currentFirearm&&f.name===currentFirearm.name?'selected':''}>${f.name} (${bl})</option>`;}).join('');
 
-  // Effective firearm at initial render — used to compute EXP MV per row
-  const effectiveFirearmAtRender = isManualMode
-    ? (batch.range_barrel_length!=null ? {name: batch.range_firearm_label||'Manual', barrel_length: batch.range_barrel_length} : null)
-    : currentFirearm;
+  // Session picker — only shown when previous sessions exist
+  const sessionPickerHtml=sessions.length>0?`
+    <div class="rc-sessions-bar">
+      <div class="rc-sessions-bar-header">
+        <div class="rc-label">SESSIONS</div>
+        <button class="btn btn-secondary btn-sm" onclick="rcNewSession('${id}')">+ NEW</button>
+      </div>
+      <div class="rc-sessions-scroll">
+        ${sessions.map((s,i)=>{const sv=s.shots?.filter(x=>x.velocity>0)||[];const sStats=sv.length?calcStats(sv.map(x=>x.velocity)):null;const isAct=activeSession&&s.id===activeSession.id;return `<div class="rc-session-chip${isAct?' active':''}" onclick="rcSelectSession('${id}',${s.id})"><div class="rc-session-chip-num">S${i+1}</div><div class="rc-session-chip-date">${fmtDate(s.date)}</div><div class="rc-session-chip-stats">${sStats?Math.round(sStats.avg)+' fps':sv.length+' shots'}</div></div>`;}).join('')}
+        ${!activeSession?`<div class="rc-session-chip active"><div class="rc-session-chip-num">NEW</div><div class="rc-session-chip-date">${fmtDate(effDate)}</div><div class="rc-session-chip-stats">0 shots</div></div>`:''}
+      </div>
+    </div>`:'';
 
-  let shotRowsHtml='', lastGroup=null;
+  const existingShots=activeSession?.shots||[];
+  let shotRowsHtml='',lastGroup=null;
   cartridges.forEach((c,i)=>{
     const existing=existingShots[i];
     const hasVelo=existing&&existing.velocity>0;
@@ -2284,6 +2386,8 @@ routes['range-card'] = async ({id}) => {
   render(`
     <div style="background:var(--surface);border:1px solid var(--border);overflow:hidden">
 
+      ${sessionPickerHtml}
+
       <div class="rc-session-header">
         <h2>${batch.id}</h2>
         <div class="rc-meta">${batch.load_dev_type}${isGrouped?' · '+batch.group_mode.toUpperCase()+' GROUPS':''} · ${cartridges.length} ROUNDS · ${fmtDate(batch.loaded_date)}</div>
@@ -2298,14 +2402,14 @@ routes['range-card'] = async ({id}) => {
           </select>
           <div id="rc-manual-fields" style="display:${isManualMode?'block':'none'}">
             <div class="rc-label" style="margin-top:8px">Label <span style="font-size:9px;color:var(--muted2);font-weight:600;letter-spacing:.5px">— OPTIONAL</span></div>
-            <input class="form-control" id="rc-manual-label" type="text" placeholder="Loaner, scratch build, etc" value="${isManualMode?(batch.range_firearm_label||''):''}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+            <input class="form-control" id="rc-manual-label" type="text" placeholder="Loaner, scratch build, etc" value="${isManualMode?(effRangeLabel||''):''}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
             <div class="rc-label" style="margin-top:8px">Barrel Length (in) <span style="font-size:9px;color:var(--danger);font-weight:600;letter-spacing:.5px">— REQUIRED</span></div>
-            <input class="form-control" id="rc-manual-barrel" type="number" inputmode="decimal" step="0.5" value="${isManualMode?(batch.range_barrel_length??''):''}" oninput="onRangeBarrelChange()" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+            <input class="form-control" id="rc-manual-barrel" type="number" inputmode="decimal" step="0.5" value="${isManualMode?(effBarrelLen??''):''}" oninput="onRangeBarrelChange()" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
           </div>
         </div>
         <div style="padding:10px 14px">
           <div class="rc-label">Range Date</div>
-          <input class="form-control" id="rc-range-date" type="date" value="${batch.range_date||new Date().toISOString().slice(0,10)}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+          <input class="form-control" id="rc-range-date" type="date" value="${effDate}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
         </div>
       </div>
 
@@ -2323,15 +2427,15 @@ routes['range-card'] = async ({id}) => {
       <div class="rc-env-strip">
         <div class="rc-env-cell">
           <label>Temp °F</label>
-          <input id="rc-env-temp" type="number" inputmode="numeric" value="${batch.range_conditions?.temp_f||59}">
+          <input id="rc-env-temp" type="number" inputmode="numeric" value="${effConditions?.temp_f||59}">
         </div>
         <div class="rc-env-cell">
           <label>Humidity %</label>
-          <input id="rc-env-hum" type="number" inputmode="numeric" value="${batch.range_conditions?.humidity||50}">
+          <input id="rc-env-hum" type="number" inputmode="numeric" value="${effConditions?.humidity||50}">
         </div>
         <div class="rc-env-cell">
           <label>Elevation ft</label>
-          <input id="rc-env-elev" type="number" inputmode="numeric" value="${batch.range_conditions?.elevation||0}">
+          <input id="rc-env-elev" type="number" inputmode="numeric" value="${effConditions?.elevation||0}">
         </div>
       </div>
 
@@ -2361,7 +2465,6 @@ routes['range-card'] = async ({id}) => {
     </div>
   `);
 
-  // Use effective firearm so the RDS bar reflects any per-batch barrel override
   updateRangeRDSBar(batch, getEffectiveRangeFirearm());
   updateRangeLiveStats();
 };
@@ -2410,6 +2513,17 @@ window.onRangeBarrelChange = () => {
   const batch=_rcSession._batch; if (!batch) return;
   updateRangeRDSBar(batch, getEffectiveRangeFirearm());
   refreshAllRowExpected(batch);
+};
+
+window.rcSelectSession = (batchId, sessionId) => {
+  if (_rcSession.dirty && !confirm_('Switch sessions? Unsaved changes will be lost.')) return;
+  _pendingSessionId=sessionId;
+  navigate('range-card/'+batchId);
+};
+window.rcNewSession = batchId => {
+  if (_rcSession.dirty && !confirm_('Start new session? Unsaved changes will be lost.')) return;
+  _pendingSessionId=null;
+  navigate('range-card/'+batchId);
 };
 
 function refreshAllRowExpected(batch) {
@@ -2557,6 +2671,7 @@ window.onDetVeloInput = idx => {
   document.getElementById('det-velo-wrap')?.classList.toggle('filled',hasVal);
   if (!_rcSession.shots[idx]) _rcSession.shots[idx]={velocity:0,field_notes:''};
   _rcSession.shots[idx].velocity=hasVal?v:0;
+  _rcSession.dirty=true;
   updateRangeLiveStats();
   // Live update Expected-MV delta block
   const av=window._currentDetailAv;
@@ -2581,6 +2696,7 @@ function _saveShotDetailToSession(idx) {
   if (!_rcSession.shots[idx]) _rcSession.shots[idx]={velocity:0,field_notes:''};
   if (veloEl){const v=parseFloat(veloEl.value);_rcSession.shots[idx].velocity=(!isNaN(v)&&v>0)?v:0;}
   if (notesEl) _rcSession.shots[idx].field_notes=notesEl.value.trim();
+  _rcSession.dirty=true;
   const v=_rcSession.shots[idx].velocity;
   const disp=document.getElementById(`rc-velo-disp-${idx}`);
   const numEl=document.getElementById(`rc-num-${idx}`);
@@ -2619,29 +2735,42 @@ window.commitRangeSession = async batchId => {
   if (!validShots.length){toast('NO VELOCITIES ENTERED','error');return;}
   const rangeDate=document.getElementById('rc-range-date')?.value||new Date().toISOString().slice(0,10);
   const sel=document.getElementById('rc-firearm-sel');
+  let sessFirearmId=batch.firearm_id||'', sessLabel='', sessBarrel=null;
   if (sel) {
     if (sel.value === '__manual__') {
       const labelEl=document.getElementById('rc-manual-label');
       const blEl=document.getElementById('rc-manual-barrel');
       const bl = blEl && blEl.value!=='' ? parseFloat(blEl.value) : NaN;
       if (isNaN(bl) || bl<=0) { toast('BARREL LENGTH REQUIRED FOR MANUAL ENTRY','error'); return; }
-      batch.firearm_id = '';
-      batch.range_firearm_label = labelEl?.value?.trim() || '';
-      batch.range_barrel_length = bl;
+      sessFirearmId=''; sessLabel=labelEl?.value?.trim()||''; sessBarrel=bl;
+      batch.firearm_id=''; batch.range_firearm_label=sessLabel; batch.range_barrel_length=sessBarrel;
     } else if (sel.value) {
-      batch.firearm_id = sel.value;
-      batch.range_firearm_label = '';
-      batch.range_barrel_length = null;
+      sessFirearmId=sel.value;
+      batch.firearm_id=sel.value; batch.range_firearm_label=''; batch.range_barrel_length=null;
     }
   }
-  batch.range_conditions={
+  const conditions={
     temp_f:    parseFloat(document.getElementById('rc-env-temp')?.value)||59,
     humidity:  parseFloat(document.getElementById('rc-env-hum')?.value)||50,
     elevation: parseFloat(document.getElementById('rc-env-elev')?.value)||0,
   };
-  batch.shots=shots; batch.range_date=rangeDate;
+
+  // Build session object
+  const sessionObj={id:_rcSession.sessionId, date:rangeDate, firearm_id:sessFirearmId, range_firearm_label:sessLabel, range_barrel_length:sessBarrel, conditions, shots};
+
+  // Migrate any legacy shots into range_sessions before upserting
+  if (!batch.range_sessions) batch.range_sessions=getSessionsForBatch(batch).filter(s=>s.id!==sessionObj.id);
+
+  // Upsert session
+  const existIdx=batch.range_sessions.findIndex(s=>s.id===sessionObj.id);
+  if (existIdx>=0) batch.range_sessions[existIdx]=sessionObj;
+  else batch.range_sessions.push(sessionObj);
+
+  // Keep legacy flat fields pointing to this session for backwards compatibility
+  batch.shots=shots; batch.range_date=rangeDate; batch.range_conditions=conditions;
+
   await dbPut('batches',batch);
-  _rcSession={batchId:null,cartridges:[],shots:[]};
+  _rcSession={batchId:null,cartridges:[],shots:[],sessionId:null,dirty:false};
   toast(`${validShots.length} SHOTS SAVED`,'success');
   if (batch.case_brand) promptFireCount(batch.case_brand);
   navigate('batch/'+batchId);
