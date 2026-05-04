@@ -366,8 +366,8 @@ textarea.form-control{min-height:80px;resize:vertical;}
 #toast.error{border-color:var(--danger);color:var(--danger);}
 @media print{#bottom-nav,#top-bar .action-btn,.tabs,.btn,.back-btn{display:none !important;}#view{padding:0;}}
 #target-canvas-wrap{position:relative;width:100%;touch-action:none;
-  background:#1a1a1a;overflow:hidden;border:1px solid var(--border);}
-#target-canvas{display:block;max-width:100%;height:auto;cursor:crosshair;margin:0 auto;}
+  background:#1a1a1a;overflow:hidden;border:1px solid var(--border);max-height:55vh;}
+#target-canvas{display:block;width:100%;height:auto;cursor:crosshair;transform-origin:0 0;}
 .target-toolbar{display:flex;gap:6px;flex-wrap:wrap;padding:10px 0;margin-bottom:10px;}
 .target-tool-btn{flex:1;min-width:60px;padding:10px 8px;font-size:11px;font-weight:700;
   letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
@@ -2941,6 +2941,10 @@ let _tgt = {
   mode: 'impact', impactSize: 'md', dragType: null,
   scaleP1: null, scaleP2: null, selectedIdx: -1,
   dragging: false, dragOffsetX: 0, dragOffsetY: 0,
+  // Viewport (pan + zoom)
+  panX: 0, panY: 0, zoom: 1,
+  activePointers: {}, lastPinchDist: null, lastPinchMidX: null, lastPinchMidY: null,
+  isPanning: false, panStart: null,
 };
 
 register('target', async () => {
@@ -3026,6 +3030,9 @@ register('target', async () => {
       <button class="target-tool-btn" onclick="clearTargetSession()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">
         CLEAR
       </button>
+      <button class="target-tool-btn" onclick="resetTgtViewport()" title="Reset zoom/pan">
+        FIT
+      </button>
     </div>
 
     <!-- Mode hint -->
@@ -3090,6 +3097,8 @@ window.loadTargetImageFile = file => {
     _tgt.image = null; _tgt.scale = null; _tgt.poa = null;
     _tgt.impacts = []; _tgt.mode = 'scale1'; _tgt.sessionName = '';
     _tgt.scaleP1 = null; _tgt.scaleP2 = null;
+    _tgt.panX = 0; _tgt.panY = 0; _tgt.zoom = 1;
+    _tgt.activePointers = {}; _tgt.lastPinchDist = null; _tgt.isPanning = false;
     navigate('target');
   };
   reader.readAsDataURL(file);
@@ -3104,24 +3113,74 @@ function initTargetCanvas() {
   img.onload = () => {
     _tgt.image = img;
     const maxW = wrap.clientWidth || 360;
-    const maxH = Math.round(window.innerHeight * 0.52);
     const ratio = img.height / img.width;
-    let cw = maxW, ch = Math.round(maxW * ratio);
-    if (ch > maxH) { ch = maxH; cw = Math.round(ch / ratio); }
-    canvas.width  = cw;
-    canvas.height = ch;
+    canvas.width  = maxW;
+    canvas.height = Math.round(maxW * ratio);
+    applyViewport();
     drawTargetCanvas();
     renderTargetStats();
     updateScaleIndicator();
   };
   img.src = _tgt.imageData;
 
-  // ── Pointer events for canvas ──
-  canvas.addEventListener('pointerdown', onTgtPointerDown);
-  canvas.addEventListener('pointermove', onTgtPointerMove);
-  canvas.addEventListener('pointerup',   onTgtPointerUp);
-  canvas.addEventListener('pointercancel', () => { _tgt.dragging = false; });
+  canvas.addEventListener('pointerdown',  onTgtPointerDown);
+  canvas.addEventListener('pointermove',  onTgtPointerMove);
+  canvas.addEventListener('pointerup',    onTgtPointerUp);
+  canvas.addEventListener('pointercancel',onTgtPointerCancel);
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    applyZoom(e.deltaY < 0 ? 1.12 : 1/1.12, e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+  wrap.addEventListener('contextmenu', e => e.preventDefault());
 }
+
+function applyViewport() {
+  const canvas = document.getElementById('target-canvas');
+  if (canvas) canvas.style.transform = `translate(${_tgt.panX}px,${_tgt.panY}px) scale(${_tgt.zoom})`;
+}
+function clampViewport() {
+  const wrap = document.getElementById('target-canvas-wrap');
+  const canvas = document.getElementById('target-canvas');
+  if (!wrap || !canvas) return;
+  const natW = wrap.clientWidth;
+  const natH = Math.round(natW * canvas.height / canvas.width);
+  const visW = natW * _tgt.zoom, visH = natH * _tgt.zoom;
+  const K = 80;
+  _tgt.panX = Math.min(K, Math.max(wrap.clientWidth  - visW - K, _tgt.panX));
+  _tgt.panY = Math.min(K, Math.max(wrap.clientHeight - visH - K, _tgt.panY));
+}
+function applyZoom(factor, mx, my) {
+  const newZoom = Math.min(8, Math.max(1, _tgt.zoom * factor));
+  const f = newZoom / _tgt.zoom;
+  _tgt.panX = mx * (1 - f) + _tgt.panX * f;
+  _tgt.panY = my * (1 - f) + _tgt.panY * f;
+  _tgt.zoom = newZoom;
+  clampViewport();
+  applyViewport();
+}
+function doPinch() {
+  const ptrs = Object.values(_tgt.activePointers);
+  if (ptrs.length < 2) return;
+  const p1 = ptrs[0], p2 = ptrs[1];
+  const wrap = document.getElementById('target-canvas-wrap');
+  const rect = wrap ? wrap.getBoundingClientRect() : { left: 0, top: 0 };
+  const mx = (p1.clientX + p2.clientX) / 2 - rect.left;
+  const my = (p1.clientY + p2.clientY) / 2 - rect.top;
+  const dist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+  if (_tgt.lastPinchDist !== null) {
+    _tgt.panX += mx - _tgt.lastPinchMidX;
+    _tgt.panY += my - _tgt.lastPinchMidY;
+    applyZoom(dist / _tgt.lastPinchDist, mx, my);
+  }
+  _tgt.lastPinchDist = dist;
+  _tgt.lastPinchMidX = mx;
+  _tgt.lastPinchMidY = my;
+}
+window.resetTgtViewport = () => {
+  _tgt.panX = 0; _tgt.panY = 0; _tgt.zoom = 1;
+  applyViewport();
+};
 
 function canvasToImage(cx, cy) {
   const canvas = document.getElementById('target-canvas');
@@ -3163,6 +3222,25 @@ function hitTestImpact(cx, cy) {
 
 function onTgtPointerDown(e) {
   e.preventDefault();
+  _tgt.activePointers[e.pointerId] = { clientX: e.clientX, clientY: e.clientY };
+  e.currentTarget.setPointerCapture(e.pointerId);
+
+  // Right-click → pan
+  if (e.button === 2) {
+    _tgt.isPanning = true;
+    _tgt.panStart = { x: e.clientX - _tgt.panX, y: e.clientY - _tgt.panY };
+    e.currentTarget.style.cursor = 'grabbing';
+    return;
+  }
+
+  // Two+ fingers → pinch/pan; cancel any active tool drag
+  if (Object.keys(_tgt.activePointers).length >= 2) {
+    _tgt.dragging = false; _tgt.dragType = null;
+    _tgt.lastPinchDist = null; _tgt.lastPinchMidX = null; _tgt.lastPinchMidY = null;
+    return;
+  }
+
+  // Single pointer tool logic
   const {x, y} = getCanvasPos(e);
   const imgPos  = canvasToImage(x, y);
 
@@ -3232,6 +3310,25 @@ function onTgtPointerDown(e) {
 }
 
 function onTgtPointerMove(e) {
+  if (_tgt.activePointers[e.pointerId]) {
+    _tgt.activePointers[e.pointerId] = { clientX: e.clientX, clientY: e.clientY };
+  }
+
+  // Right-click pan
+  if (_tgt.isPanning) {
+    _tgt.panX = e.clientX - _tgt.panStart.x;
+    _tgt.panY = e.clientY - _tgt.panStart.y;
+    clampViewport();
+    applyViewport();
+    return;
+  }
+
+  // Pinch/pan (2+ fingers)
+  if (Object.keys(_tgt.activePointers).length >= 2) {
+    doPinch();
+    return;
+  }
+
   if (!_tgt.dragging) return;
   e.preventDefault();
   const {x,y}=getCanvasPos(e);
@@ -3245,11 +3342,27 @@ function onTgtPointerMove(e) {
 }
 
 function onTgtPointerUp(e) {
+  delete _tgt.activePointers[e.pointerId];
+
+  // End right-click pan
+  if (_tgt.isPanning) {
+    _tgt.isPanning = false;
+    e.currentTarget.style.cursor = 'crosshair';
+    return;
+  }
+
+  // Reset pinch tracking when fewer than 2 pointers remain
+  if (Object.keys(_tgt.activePointers).length < 2) {
+    _tgt.lastPinchDist = null; _tgt.lastPinchMidX = null; _tgt.lastPinchMidY = null;
+  }
+
+  // If other pointers still active (mid-pinch), don't trigger tool actions
+  if (Object.keys(_tgt.activePointers).length > 0) return;
+
   const wasType = _tgt.dragType;
   const wasMode = _tgt.mode;
   _tgt.dragging = false;
   _tgt.dragType = null;
-  // Advance mode after finishing a scale point placement drag
   if (wasType === 'scale1' && wasMode === 'scale1') {
     _tgt.mode = 'scale2';
     updateTgtHint();
@@ -3257,6 +3370,13 @@ function onTgtPointerUp(e) {
   } else if (wasType === 'scale2' && wasMode === 'scale2' && _tgt.scaleP1 && _tgt.scaleP2) {
     computeScale(false);
   }
+}
+
+function onTgtPointerCancel(e) {
+  delete _tgt.activePointers[e.pointerId];
+  _tgt.dragging = false; _tgt.isPanning = false;
+  _tgt.lastPinchDist = null;
+  e.currentTarget.style.cursor = 'crosshair';
 }
 
 function computeScale(silent=false) {
