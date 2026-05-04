@@ -398,6 +398,10 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .tgt-group-chip{padding:5px 12px;border:1.5px solid var(--gc,var(--border2));font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;background:transparent;color:var(--text);font-family:'Barlow Condensed',sans-serif;}
 .tgt-group-chip.active{background:var(--gc,var(--accent));color:#fff;border-color:var(--gc,var(--accent));}
 .tgt-group-chip.add-grp{border-style:dashed;color:var(--muted2);}
+#tgt-link-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;padding:6px 0;font-size:12px;font-family:'Share Tech Mono',monospace;}
+#tgt-link-row label{font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-right:4px;}
+#tgt-link-row select,#tgt-link-row input[type=number]{padding:4px 6px;font-size:12px;width:auto;min-width:0;}
+#tgt-link-row input[type=number]{width:54px;text-align:center;}
 .tgt-mode-hint{font-size:11px;font-family:'Share Tech Mono',monospace;
   color:var(--accent);padding:8px 12px;background:rgba(44,95,136,.08);
   border:1px solid rgba(44,95,136,.2);margin-bottom:10px;letter-spacing:.5px;}
@@ -2458,6 +2462,19 @@ routes['range-card'] = async ({id}) => {
         </div>
       </div>
 
+      <!-- Target analysis results (if saved) -->
+      ${activeSession?.target_groups?.length ? `
+      <div style="padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border)">
+        <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:8px">TARGET ANALYSIS</div>
+        ${activeSession.target_groups.map(tg => {
+          const shotRange = tg.shotFirst ? ` · shots ${tg.shotFirst}–${tg.shotLast||'?'}` : '';
+          return `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;flex-wrap:wrap;gap:4px">
+            <span style="font-size:12px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;color:var(--text)">${tg.groupLabel}${shotRange}</span>
+            <span style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--accent)">${tg.groupSizeIn.toFixed(3)}" · ${tg.groupSizeMOA.toFixed(2)} MOA @ ${tg.distYds} ${tg.distUnit}</span>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
       <!-- Shot rows -->
       <div id="rc-shot-rows">${shotRowsHtml}</div>
 
@@ -2947,13 +2964,14 @@ const GROUP_COLORS = [
 ];
 let _tgt = {
   image: null, imageData: null, scale: null,
-  groups: [{ id: 1, label: 'GROUP 1', poa: null, impacts: [] }],
+  groups: [{ id: 1, label: 'GROUP 1', poa: null, impacts: [], linkedSessionId: null, shotFirst: '', shotLast: '' }],
   activeGroupIdx: 0,
   distYds: 100, distUnit: 'yds', batchId: '', sessionName: '',
   rangeDate: new Date().toISOString().slice(0,10),
   mode: 'impact', impactSize: 'md', dragType: null,
   scaleP1: null, scaleP2: null, selectedIdx: -1,
   dragging: false, dragOffsetX: 0, dragOffsetY: 0,
+  _batchSessions: [],
   // Viewport (pan + zoom)
   panX: 0, panY: 0, zoom: 1,
   activePointers: {}, lastPinchDist: null, lastPinchMidX: null, lastPinchMidY: null,
@@ -2963,6 +2981,11 @@ let _tgt = {
 register('target', async () => {
   setTitle('TARGET', false, `<button class="action-btn" onclick="exportTargetSession()">${ICONS.export} EXPORT</button>`);
   const batches = await dbGetAll('batches');
+  // Pre-load sessions for the currently linked batch
+  if (_tgt.batchId && !_tgt._batchSessions.length) {
+    const lb = batches.find(b => b.id === _tgt.batchId);
+    if (lb) _tgt._batchSessions = getSessionsForBatch(lb);
+  }
   const batchOpts = batches.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
     .map(b=>`<option value="${b.id}" ${b.id===_tgt.batchId?'selected':''}>${b.id}</option>`).join('');
 
@@ -2992,7 +3015,7 @@ register('target', async () => {
           <div class="form-group" style="margin-bottom:0">
             <label>Link to Batch</label>
             <select class="form-control" id="tgt-batch"
-              onchange="_tgt.batchId=this.value;document.getElementById('tgt-name-wrap').style.display=this.value?'none':''">
+              onchange="onTgtBatchChange(this.value)">
               <option value="">— None —</option>${batchOpts}
             </select>
           </div>
@@ -3046,6 +3069,7 @@ register('target', async () => {
       <button class="target-tool-btn" onclick="resetTgtViewport()" title="Reset zoom/pan">
         FIT
       </button>
+      ${_tgt.batchId ? `<button class="target-tool-btn" onclick="saveTargetToBatch()" style="color:var(--success);border-color:rgba(61,122,92,.4)">SAVE</button>` : ''}
     </div>
 
     <!-- Group picker -->
@@ -3053,6 +3077,9 @@ register('target', async () => {
       ${_tgt.groups.map((g,i)=>`<button class="tgt-group-chip${i===_tgt.activeGroupIdx?' active':''}" onclick="setActiveGroup(${i})" style="--gc:${GROUP_COLORS[i%GROUP_COLORS.length].ring}">${g.label}</button>`).join('')}
       <button class="tgt-group-chip add-grp" onclick="addTgtGroup()">+ GROUP</button>
     </div>
+
+    <!-- Shot link row (populated by renderGroupLink) -->
+    <div id="tgt-link-row"></div>
 
     <!-- Mode hint -->
     <div class="tgt-mode-hint" id="tgt-hint"></div>
@@ -3097,6 +3124,7 @@ register('target', async () => {
   if (_tgt.imageData) {
     initTargetCanvas();
     updateTgtHint();
+    renderGroupLink();
   }
 
   // Drag/drop on upload zone
@@ -3114,8 +3142,8 @@ window.loadTargetImageFile = file => {
   reader.onload = ev => {
     _tgt.imageData = ev.target.result;
     _tgt.image = null; _tgt.scale = null;
-    _tgt.groups = [{ id: 1, label: 'GROUP 1', poa: null, impacts: [] }];
-    _tgt.activeGroupIdx = 0;
+    _tgt.groups = [{ id: 1, label: 'GROUP 1', poa: null, impacts: [], linkedSessionId: null, shotFirst: '', shotLast: '' }];
+    _tgt.activeGroupIdx = 0; _tgt._batchSessions = [];
     _tgt.mode = 'scale1'; _tgt.sessionName = '';
     _tgt.scaleP1 = null; _tgt.scaleP2 = null;
     _tgt.panX = 0; _tgt.panY = 0; _tgt.zoom = 1;
@@ -3128,6 +3156,83 @@ window.loadTargetImageFile = file => {
 function activeGroup() {
   return _tgt.groups[_tgt.activeGroupIdx] || _tgt.groups[0];
 }
+
+window.onTgtBatchChange = async val => {
+  _tgt.batchId = val;
+  _tgt._batchSessions = [];
+  document.getElementById('tgt-name-wrap').style.display = val ? 'none' : '';
+  if (val) {
+    const batch = await dbGet('batches', val);
+    if (batch) _tgt._batchSessions = getSessionsForBatch(batch);
+  }
+  renderGroupLink();
+  renderTargetStats();
+};
+
+function renderGroupLink() {
+  const el = document.getElementById('tgt-link-row');
+  if (!el) return;
+  if (!_tgt.batchId) { el.innerHTML = ''; return; }
+  const ag = activeGroup();
+  const sessions = _tgt._batchSessions;
+  const gc = GROUP_COLORS[_tgt.activeGroupIdx % GROUP_COLORS.length].ring;
+  const sessOpts = sessions.map((s, i) => {
+    const sv = s.shots?.filter(x => x.velocity > 0) || [];
+    return `<option value="${s.id}" ${s.id === ag.linkedSessionId ? 'selected' : ''}>S${i+1} · ${s.date}${sv.length ? ' · ' + sv.length + ' shots' : ''}</option>`;
+  }).join('');
+  el.innerHTML = `
+    <span style="font-size:10px;font-weight:700;letter-spacing:1px;color:${gc};font-family:'Barlow Condensed',sans-serif">${ag.label}</span>
+    <label>SESSION</label>
+    <select class="form-control" style="padding:4px 6px;font-size:12px" onchange="onTgtLinkSessChange(this.value)">
+      <option value="">— none —</option>${sessOpts}
+    </select>
+    ${ag.linkedSessionId ? `
+      <label>SHOTS</label>
+      <input type="number" class="form-control" min="1" placeholder="from" value="${ag.shotFirst||''}"
+        oninput="activeGroup().shotFirst=parseInt(this.value)||'';renderTargetStats()" style="width:58px">
+      <span style="color:var(--muted2)">–</span>
+      <input type="number" class="form-control" min="1" placeholder="to" value="${ag.shotLast||''}"
+        oninput="activeGroup().shotLast=parseInt(this.value)||'';renderTargetStats()" style="width:58px">
+    ` : ''}`;
+}
+
+window.onTgtLinkSessChange = val => {
+  const ag = activeGroup();
+  ag.linkedSessionId = val ? parseInt(val) : null;
+  ag.shotFirst = ''; ag.shotLast = '';
+  renderGroupLink();
+  renderTargetStats();
+};
+
+window.saveTargetToBatch = async () => {
+  if (!_tgt.batchId) return;
+  const batch = await dbGet('batches', _tgt.batchId);
+  if (!batch) return;
+  if (!batch.range_sessions) batch.range_sessions = getSessionsForBatch(batch);
+  let saved = 0;
+  for (const grp of _tgt.groups) {
+    if (!grp.linkedSessionId) continue;
+    const stats = calcGroupStats(grp);
+    if (!stats) continue;
+    const si = batch.range_sessions.findIndex(s => s.id === grp.linkedSessionId);
+    if (si < 0) continue;
+    if (!batch.range_sessions[si].target_groups) batch.range_sessions[si].target_groups = [];
+    const tg = {
+      groupLabel: grp.label, shotFirst: grp.shotFirst || null, shotLast: grp.shotLast || null,
+      distYds: _tgt.distYds, distUnit: _tgt.distUnit,
+      groupSizeIn: stats.groupSize, groupSizeMOA: stats.groupMOA,
+      meanRadiusIn: stats.meanRadius, meanRadiusMOA: stats.meanRadMOA,
+      poiWindageIn: stats.centroid.windage, poiElevationIn: stats.centroid.elevation,
+    };
+    const ei = batch.range_sessions[si].target_groups.findIndex(x => x.groupLabel === grp.label);
+    if (ei >= 0) batch.range_sessions[si].target_groups[ei] = tg;
+    else batch.range_sessions[si].target_groups.push(tg);
+    saved++;
+  }
+  if (!saved) { toast('No linked groups with stats to save', 'warn'); return; }
+  await dbPut('batches', batch);
+  toast(`Target data saved to ${batch.id}`, 'success');
+};
 function renderGroupBar() {
   const bar = document.getElementById('tgt-group-bar');
   if (!bar) return;
@@ -3140,12 +3245,13 @@ window.setActiveGroup = idx => {
   _tgt.activeGroupIdx = idx;
   _tgt.selectedIdx = -1;
   renderGroupBar();
+  renderGroupLink();
   drawTargetCanvas();
   renderTargetStats();
 };
 window.addTgtGroup = () => {
   const id = Math.max(0, ..._tgt.groups.map(g => g.id)) + 1;
-  _tgt.groups.push({ id, label: `GROUP ${_tgt.groups.length + 1}`, poa: null, impacts: [] });
+  _tgt.groups.push({ id, label: `GROUP ${_tgt.groups.length + 1}`, poa: null, impacts: [], linkedSessionId: null, shotFirst: '', shotLast: '' });
   _tgt.activeGroupIdx = _tgt.groups.length - 1;
   _tgt.selectedIdx = -1;
   renderGroupBar();
@@ -3445,6 +3551,7 @@ function computeScale(silent=false) {
   const statusEl = document.getElementById('tgt-scale-status');
   if (statusEl) statusEl.textContent = `// SCALE SET: ${_tgt.scale.toFixed(1)} px/in · ${knownDist} ${unit} = ${px.toFixed(0)} px`;
   updateScaleIndicator();
+  renderTargetStats();
   if(!silent){toast(`SCALE SET: ${knownDist} ${unit}`,'success');setTgtMode('poa');}
 }
 
@@ -3643,7 +3750,7 @@ window.deleteSelectedImpact = () => {
 };
 window.clearTargetSession = () => {
   if (!confirm_('Clear all marks on all groups? Image will remain.')) return;
-  _tgt.groups = [{ id: 1, label: 'GROUP 1', poa: null, impacts: [] }];
+  _tgt.groups = [{ id: 1, label: 'GROUP 1', poa: null, impacts: [], linkedSessionId: null, shotFirst: '', shotLast: '' }];
   _tgt.activeGroupIdx = 0;
   _tgt.scaleP1 = null; _tgt.scaleP2 = null;
   _tgt.scale = null; _tgt.selectedIdx = -1;
@@ -3704,8 +3811,43 @@ function renderTargetStats() {
   el.innerHTML = groupsWithStats.map(({grp, idx, stats}) => {
     const col = GROUP_COLORS[idx % GROUP_COLORS.length].ring;
     const {shots, centroid, meanRadius, groupSize, wSpread, hSpread, groupMOA, meanRadMOA} = stats;
+
+    // Pull linked shot velocities
+    let velos = [];
+    if (grp.linkedSessionId && _tgt._batchSessions.length) {
+      const sess = _tgt._batchSessions.find(s => s.id === grp.linkedSessionId);
+      if (sess?.shots) {
+        const from = (grp.shotFirst ? grp.shotFirst - 1 : 0);
+        const to   = (grp.shotLast  ? grp.shotLast      : sess.shots.length);
+        velos = sess.shots.slice(from, to).map(s => s.velocity).filter(v => v > 0);
+      }
+    }
+    const vStats = velos.length ? calcStats(velos) : null;
+
+    // Build per-shot velocity column (aligned by impact number if shot range provided)
+    const shotOffset = grp.shotFirst ? grp.shotFirst - 1 : 0;
+    const shotsWithVelo = shots.map((s, i) => ({
+      ...s, velocity: velos[i] !== undefined ? velos[i] : null
+    }));
+
+    const veloHeader = vStats ? `<th>Velo (fps)</th>` : '';
+    const veloRows   = s => vStats && s.velocity ? `<td style="color:var(--success)">${Math.round(s.velocity)}</td>` : vStats ? `<td style="color:var(--muted2)">—</td>` : '';
+
+    const veloSummary = vStats ? `
+      <div style="margin-bottom:10px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${col}">
+        <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:6px">
+          VELOCITY · ${_tgt.batchId} · ${velos.length} shots
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div><div class="tgt-stat-label">Avg MV</div><div style="font-size:16px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--ink)">${Math.round(vStats.avg)}<span class="tgt-stat-unit">fps</span></div></div>
+          <div><div class="tgt-stat-label">SD</div><div style="font-size:16px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--success)">${vStats.sd.toFixed(1)}<span class="tgt-stat-unit">fps</span></div></div>
+          <div><div class="tgt-stat-label">ES</div><div style="font-size:16px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--ink)">${Math.round(vStats.es)}<span class="tgt-stat-unit">fps</span></div></div>
+          <div><div class="tgt-stat-label">Min/Max</div><div style="font-size:13px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${Math.round(vStats.min)}–${Math.round(vStats.max)}</div></div>
+        </div>
+      </div>` : '';
+
     return `
-    <div class="section-title" style="color:${col};border-color:${col}">${grp.label} — ${shots.length} shots @ ${_tgt.distYds} ${_tgt.distUnit}</div>
+    <div class="section-title" style="color:${col};border-color:${col}">${grp.label} — ${shots.length} impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>
     <div class="tgt-stat-grid">
       <div class="tgt-stat-box hi">
         <div class="tgt-stat-label">Group Size</div>
@@ -3736,12 +3878,14 @@ function renderTargetStats() {
         <div class="tgt-stat-val">${hSpread.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
       </div>
     </div>
+    ${veloSummary}
     <div style="overflow-x:auto;margin-bottom:16px"><table class="tgt-shot-table">
-      <thead><tr><th>#</th><th>Dist (in)</th><th>Wind (in)</th><th>Elev (in)</th></tr></thead>
-      <tbody>${shots.map(s=>`<tr>
+      <thead><tr><th>#</th><th>Dist (in)</th><th>Wind (in)</th><th>Elev (in)</th>${veloHeader}</tr></thead>
+      <tbody>${shotsWithVelo.map(s=>`<tr>
         <td>${s.num}</td><td>${s.dist.toFixed(3)}</td>
         <td style="color:var(--info)">${s.windage>=0?'+':''}${s.windage.toFixed(3)}</td>
         <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
+        ${veloRows(s)}
       </tr>`).join('')}</tbody>
     </table></div>`;
   }).join('');
