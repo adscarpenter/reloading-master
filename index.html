@@ -367,7 +367,7 @@ textarea.form-control{min-height:80px;resize:vertical;}
 @media print{#bottom-nav,#top-bar .action-btn,.tabs,.btn,.back-btn{display:none !important;}#view{padding:0;}}
 #target-canvas-wrap{position:relative;width:100%;touch-action:none;
   background:#1a1a1a;overflow:hidden;border:1px solid var(--border);}
-#target-canvas{display:block;width:100%;height:auto;cursor:crosshair;}
+#target-canvas{display:block;max-width:100%;height:auto;cursor:crosshair;margin:0 auto;}
 .target-toolbar{display:flex;gap:6px;flex-wrap:wrap;padding:10px 0;margin-bottom:10px;}
 .target-tool-btn{flex:1;min-width:60px;padding:10px 8px;font-size:11px;font-weight:700;
   letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
@@ -3104,9 +3104,12 @@ function initTargetCanvas() {
   img.onload = () => {
     _tgt.image = img;
     const maxW = wrap.clientWidth || 360;
+    const maxH = Math.round(window.innerHeight * 0.52);
     const ratio = img.height / img.width;
-    canvas.width  = maxW;
-    canvas.height = Math.round(maxW * ratio);
+    let cw = maxW, ch = Math.round(maxW * ratio);
+    if (ch > maxH) { ch = maxH; cw = Math.round(ch / ratio); }
+    canvas.width  = cw;
+    canvas.height = ch;
     drawTargetCanvas();
     renderTargetStats();
     updateScaleIndicator();
@@ -3164,18 +3167,20 @@ function onTgtPointerDown(e) {
   const imgPos  = canvasToImage(x, y);
 
   if (_tgt.mode === 'select') {
-    const HIT_POA=22, HIT_SCALE=18;
+    const HIT_POA=22, HIT_SCALE=20, SCALE_H_OFF=11+30;
     if (_tgt.poa) {
       const c=imageToCanvas(_tgt.poa.x,_tgt.poa.y),dx=x-c.x,dy=y-c.y;
       if (Math.sqrt(dx*dx+dy*dy)<HIT_POA){_tgt.dragging=true;_tgt.dragType='poa';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
     }
     if (_tgt.scaleP2) {
       const c=imageToCanvas(_tgt.scaleP2.x,_tgt.scaleP2.y),dx=x-c.x,dy=y-c.y;
-      if (Math.sqrt(dx*dx+dy*dy)<HIT_SCALE){_tgt.dragging=true;_tgt.dragType='scale2';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
+      const hdy=y-(c.y+SCALE_H_OFF);
+      if (Math.sqrt(dx*dx+dy*dy)<HIT_SCALE||Math.sqrt(dx*dx+hdy*hdy)<16){_tgt.dragging=true;_tgt.dragType='scale2';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
     }
     if (_tgt.scaleP1) {
       const c=imageToCanvas(_tgt.scaleP1.x,_tgt.scaleP1.y),dx=x-c.x,dy=y-c.y;
-      if (Math.sqrt(dx*dx+dy*dy)<HIT_SCALE){_tgt.dragging=true;_tgt.dragType='scale1';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
+      const hdy=y-(c.y+SCALE_H_OFF);
+      if (Math.sqrt(dx*dx+dy*dy)<HIT_SCALE||Math.sqrt(dx*dx+hdy*hdy)<16){_tgt.dragging=true;_tgt.dragType='scale1';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
     }
     const idx=hitTestImpact(x,y);
     if (idx>=0){
@@ -3203,15 +3208,17 @@ function onTgtPointerDown(e) {
   if (_tgt.mode === 'scale1') {
     _tgt.scaleP1 = imgPos;
     _tgt.scaleP2 = null;
-    _tgt.mode = 'scale2';
-    updateTgtHint();
+    _tgt.dragging = true; _tgt.dragType = 'scale1';
+    _tgt.dragOffsetX = 0; _tgt.dragOffsetY = 0;
     drawTargetCanvas();
     return;
   }
 
   if (_tgt.mode === 'scale2') {
     _tgt.scaleP2 = imgPos;
-    computeScale();
+    _tgt.dragging = true; _tgt.dragType = 'scale2';
+    _tgt.dragOffsetX = 0; _tgt.dragOffsetY = 0;
+    if (_tgt.scaleP1) computeScale(true);
     drawTargetCanvas();
     return;
   }
@@ -3238,8 +3245,18 @@ function onTgtPointerMove(e) {
 }
 
 function onTgtPointerUp(e) {
+  const wasType = _tgt.dragType;
+  const wasMode = _tgt.mode;
   _tgt.dragging = false;
   _tgt.dragType = null;
+  // Advance mode after finishing a scale point placement drag
+  if (wasType === 'scale1' && wasMode === 'scale1') {
+    _tgt.mode = 'scale2';
+    updateTgtHint();
+    drawTargetCanvas();
+  } else if (wasType === 'scale2' && wasMode === 'scale2' && _tgt.scaleP1 && _tgt.scaleP2) {
+    computeScale(false);
+  }
 }
 
 function computeScale(silent=false) {
@@ -3293,11 +3310,11 @@ window.setTgtMode = mode => {
 function updateTgtHint() {
   const el = document.getElementById('tgt-hint'); if (!el) return;
   const hints = {
-    scale1: '// SCALE TOOL: tap first reference point on image',
-    scale2: '// SCALE TOOL: tap second reference point — then enter known distance',
+    scale1: '// SCALE: tap & drag first reference point into place',
+    scale2: '// SCALE: tap & drag second reference point — enter known distance below',
     poa:    '// POA: tap the point of aim on the target',
     impact: '// IMPACT: tap each bullet hole in order',
-    select: '// EDIT: tap impact to select & drag — use DELETE SELECTED to remove — drag POA/scale points too',
+    select: '// EDIT: tap to select & drag any marker — DELETE SELECTED to remove — scale points have drag handles too',
   };
   el.textContent = hints[_tgt.mode] || '';
 }
@@ -3309,22 +3326,34 @@ function drawTargetCanvas() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(_tgt.image, 0, 0, canvas.width, canvas.height);
 
-  // ── Scale line ──
+  // ── Scale points ──
+  const drawScalePt = (c) => {
+    const R=11, ARM=18, GAP=5;
+    ctx.setLineDash([]);
+    ctx.strokeStyle='#FFD700'; ctx.lineWidth=2.5;
+    // Open crosshair arms
+    ctx.beginPath(); ctx.moveTo(c.x-ARM,c.y); ctx.lineTo(c.x-GAP,c.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(c.x+GAP,c.y); ctx.lineTo(c.x+ARM,c.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(c.x,c.y-ARM); ctx.lineTo(c.x,c.y-GAP); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(c.x,c.y+GAP); ctx.lineTo(c.x,c.y+ARM); ctx.stroke();
+    // Circle
+    ctx.beginPath(); ctx.arc(c.x,c.y,R,0,Math.PI*2);
+    ctx.strokeStyle='#FFD700'; ctx.lineWidth=2; ctx.stroke();
+    // Thin black outline for visibility
+    ctx.beginPath(); ctx.arc(c.x,c.y,R+1.5,0,Math.PI*2);
+    ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1; ctx.stroke();
+  };
   if (_tgt.scaleP1) {
-    const c1 = imageToCanvas(_tgt.scaleP1.x, _tgt.scaleP1.y);
-    ctx.beginPath(); ctx.arc(c1.x, c1.y, 6, 0, Math.PI*2);
-    ctx.fillStyle = '#FFD700'; ctx.fill();
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
+    const c1=imageToCanvas(_tgt.scaleP1.x,_tgt.scaleP1.y);
+    drawScalePt(c1);
   }
   if (_tgt.scaleP1 && _tgt.scaleP2) {
-    const c1 = imageToCanvas(_tgt.scaleP1.x, _tgt.scaleP1.y);
-    const c2 = imageToCanvas(_tgt.scaleP2.x, _tgt.scaleP2.y);
-    ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
-    ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2; ctx.setLineDash([5,3]); ctx.stroke();
+    const c1=imageToCanvas(_tgt.scaleP1.x,_tgt.scaleP1.y);
+    const c2=imageToCanvas(_tgt.scaleP2.x,_tgt.scaleP2.y);
+    ctx.beginPath(); ctx.moveTo(c1.x,c1.y); ctx.lineTo(c2.x,c2.y);
+    ctx.strokeStyle='#FFD700'; ctx.lineWidth=2; ctx.setLineDash([5,3]); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.beginPath(); ctx.arc(c2.x, c2.y, 6, 0, Math.PI*2);
-    ctx.fillStyle = '#FFD700'; ctx.fill();
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
+    drawScalePt(c2);
   }
 
   // ── POA crosshair ──
@@ -3388,18 +3417,25 @@ function drawTargetCanvas() {
       ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
     }
   }
-  // ── Edit-mode draggable rings for POA and scale points ──
+  // ── Edit-mode drag handles for POA and scale points ──
   if (_tgt.mode==='select') {
     if (_tgt.poa) {
       const c=imageToCanvas(_tgt.poa.x,_tgt.poa.y);
-      ctx.beginPath();ctx.arc(c.x,c.y,16,0,Math.PI*2);
+      ctx.beginPath();ctx.arc(c.x,c.y,18,0,Math.PI*2);
       ctx.strokeStyle='rgba(0,230,118,0.8)';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
     }
-    [{pt:_tgt.scaleP1,col:'rgba(255,215,0,0.9)'},{pt:_tgt.scaleP2,col:'rgba(255,215,0,0.9)'}].forEach(({pt,col})=>{
+    // Scale point diamond handles (same visual language as impacts)
+    const SCALE_R=11, SCALE_H_OFF=SCALE_R+30;
+    [{pt:_tgt.scaleP1},{pt:_tgt.scaleP2}].forEach(({pt})=>{
       if(!pt)return;
       const c=imageToCanvas(pt.x,pt.y);
-      ctx.beginPath();ctx.arc(c.x,c.y,12,0,Math.PI*2);
-      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+      const hx=c.x, hy=c.y+SCALE_H_OFF;
+      ctx.beginPath();ctx.moveTo(c.x,c.y+SCALE_R);ctx.lineTo(hx,hy);
+      ctx.strokeStyle='rgba(255,215,0,0.7)';ctx.lineWidth=1.5;ctx.setLineDash([3,2]);ctx.stroke();ctx.setLineDash([]);
+      ctx.save();ctx.translate(hx,hy);ctx.rotate(Math.PI/4);
+      ctx.fillStyle='#FFD700';ctx.strokeStyle='rgba(255,255,255,0.8)';ctx.lineWidth=1.5;
+      ctx.fillRect(-7,-7,14,14);ctx.strokeRect(-7,-7,14,14);
+      ctx.restore();
     });
   }
 }
