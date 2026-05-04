@@ -367,7 +367,7 @@ textarea.form-control{min-height:80px;resize:vertical;}
 @media print{#bottom-nav,#top-bar .action-btn,.tabs,.btn,.back-btn{display:none !important;}#view{padding:0;}}
 #target-canvas-wrap{position:relative;width:100%;touch-action:none;
   background:#1a1a1a;overflow:hidden;border:1px solid var(--border);max-height:55vh;}
-#target-canvas{display:block;width:100%;height:auto;cursor:crosshair;transform-origin:0 0;}
+#target-canvas{display:block;width:80%;height:auto;cursor:crosshair;transform-origin:0 0;margin:0 auto;}
 .target-toolbar{display:flex;gap:6px;flex-wrap:wrap;padding:10px 0;margin-bottom:10px;}
 .target-tool-btn{flex:1;min-width:60px;padding:10px 8px;font-size:11px;font-weight:700;
   letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
@@ -394,6 +394,10 @@ textarea.form-control{min-height:80px;resize:vertical;}
   text-align:right;font-family:'Share Tech Mono',monospace;}
 .tgt-shot-table td:first-child{text-align:left;font-weight:700;color:var(--accent);}
 .tgt-shot-table tr:last-child td{border-bottom:none;}
+.tgt-group-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;}
+.tgt-group-chip{padding:5px 12px;border:1.5px solid var(--gc,var(--border2));font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;background:transparent;color:var(--text);font-family:'Barlow Condensed',sans-serif;}
+.tgt-group-chip.active{background:var(--gc,var(--accent));color:#fff;border-color:var(--gc,var(--accent));}
+.tgt-group-chip.add-grp{border-style:dashed;color:var(--muted2);}
 .tgt-mode-hint{font-size:11px;font-family:'Share Tech Mono',monospace;
   color:var(--accent);padding:8px 12px;background:rgba(44,95,136,.08);
   border:1px solid rgba(44,95,136,.2);margin-bottom:10px;letter-spacing:.5px;}
@@ -2934,8 +2938,17 @@ async function processXLSX(buffer) {
 // ════════════════════════════════════════════════════
 
 // ── State ──
+const GROUP_COLORS = [
+  { ring: '#2c5f88', fill: 'rgba(44,95,136,0.18)',   poa: '#00e676' },
+  { ring: '#c0541d', fill: 'rgba(192,84,29,0.18)',   poa: '#ffab40' },
+  { ring: '#7c4dff', fill: 'rgba(124,77,255,0.18)',  poa: '#ea80fc' },
+  { ring: '#00838f', fill: 'rgba(0,131,143,0.18)',   poa: '#84ffff' },
+  { ring: '#8d6e3f', fill: 'rgba(141,110,63,0.18)',  poa: '#ffe082' },
+];
 let _tgt = {
-  image: null, imageData: null, scale: null, poa: null, impacts: [],
+  image: null, imageData: null, scale: null,
+  groups: [{ id: 1, label: 'GROUP 1', poa: null, impacts: [] }],
+  activeGroupIdx: 0,
   distYds: 100, distUnit: 'yds', batchId: '', sessionName: '',
   rangeDate: new Date().toISOString().slice(0,10),
   mode: 'impact', impactSize: 'md', dragType: null,
@@ -3035,6 +3048,12 @@ register('target', async () => {
       </button>
     </div>
 
+    <!-- Group picker -->
+    <div class="tgt-group-bar" id="tgt-group-bar">
+      ${_tgt.groups.map((g,i)=>`<button class="tgt-group-chip${i===_tgt.activeGroupIdx?' active':''}" onclick="setActiveGroup(${i})" style="--gc:${GROUP_COLORS[i%GROUP_COLORS.length].ring}">${g.label}</button>`).join('')}
+      <button class="tgt-group-chip add-grp" onclick="addTgtGroup()">+ GROUP</button>
+    </div>
+
     <!-- Mode hint -->
     <div class="tgt-mode-hint" id="tgt-hint"></div>
 
@@ -3094,14 +3113,44 @@ window.loadTargetImageFile = file => {
   const reader = new FileReader();
   reader.onload = ev => {
     _tgt.imageData = ev.target.result;
-    _tgt.image = null; _tgt.scale = null; _tgt.poa = null;
-    _tgt.impacts = []; _tgt.mode = 'scale1'; _tgt.sessionName = '';
+    _tgt.image = null; _tgt.scale = null;
+    _tgt.groups = [{ id: 1, label: 'GROUP 1', poa: null, impacts: [] }];
+    _tgt.activeGroupIdx = 0;
+    _tgt.mode = 'scale1'; _tgt.sessionName = '';
     _tgt.scaleP1 = null; _tgt.scaleP2 = null;
     _tgt.panX = 0; _tgt.panY = 0; _tgt.zoom = 1;
     _tgt.activePointers = {}; _tgt.lastPinchDist = null; _tgt.isPanning = false;
     navigate('target');
   };
   reader.readAsDataURL(file);
+};
+
+function activeGroup() {
+  return _tgt.groups[_tgt.activeGroupIdx] || _tgt.groups[0];
+}
+function renderGroupBar() {
+  const bar = document.getElementById('tgt-group-bar');
+  if (!bar) return;
+  bar.innerHTML = _tgt.groups.map((g, i) => {
+    const col = GROUP_COLORS[i % GROUP_COLORS.length].ring;
+    return `<button class="tgt-group-chip${i===_tgt.activeGroupIdx?' active':''}" onclick="setActiveGroup(${i})" style="--gc:${col}">${g.label}</button>`;
+  }).join('') + `<button class="tgt-group-chip add-grp" onclick="addTgtGroup()">+ GROUP</button>`;
+}
+window.setActiveGroup = idx => {
+  _tgt.activeGroupIdx = idx;
+  _tgt.selectedIdx = -1;
+  renderGroupBar();
+  drawTargetCanvas();
+  renderTargetStats();
+};
+window.addTgtGroup = () => {
+  const id = Math.max(0, ..._tgt.groups.map(g => g.id)) + 1;
+  _tgt.groups.push({ id, label: `GROUP ${_tgt.groups.length + 1}`, poa: null, impacts: [] });
+  _tgt.activeGroupIdx = _tgt.groups.length - 1;
+  _tgt.selectedIdx = -1;
+  renderGroupBar();
+  drawTargetCanvas();
+  renderTargetStats();
 };
 
 function initTargetCanvas() {
@@ -3143,12 +3192,12 @@ function clampViewport() {
   const wrap = document.getElementById('target-canvas-wrap');
   const canvas = document.getElementById('target-canvas');
   if (!wrap || !canvas) return;
-  const natW = wrap.clientWidth;
-  const natH = Math.round(natW * canvas.height / canvas.width);
+  const natW = canvas.offsetWidth, natH = canvas.offsetHeight;
   const visW = natW * _tgt.zoom, visH = natH * _tgt.zoom;
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
   const K = 80;
-  _tgt.panX = Math.min(K, Math.max(wrap.clientWidth  - visW - K, _tgt.panX));
-  _tgt.panY = Math.min(K, Math.max(wrap.clientHeight - visH - K, _tgt.panY));
+  _tgt.panX = Math.min(K, Math.max(ww - visW - K, _tgt.panX));
+  _tgt.panY = Math.min(K, Math.max(wh - visH - K, _tgt.panY));
 }
 function applyZoom(factor, mx, my) {
   const newZoom = Math.min(8, Math.max(1, _tgt.zoom * factor));
@@ -3210,8 +3259,9 @@ function getCanvasPos(e) {
 function hitTestImpact(cx, cy) {
   const BASE_R = _tgt.impactSize==='sm'?10:_tgt.impactSize==='lg'?26:18;
   const C_HIT = Math.max(BASE_R+8,22), H_HIT=18, H_OFF=BASE_R+30;
-  for (let i = _tgt.impacts.length - 1; i >= 0; i--) {
-    const c = imageToCanvas(_tgt.impacts[i].x, _tgt.impacts[i].y);
+  const impacts = activeGroup().impacts;
+  for (let i = impacts.length - 1; i >= 0; i--) {
+    const c = imageToCanvas(impacts[i].x, impacts[i].y);
     const dx=cx-c.x, dy=cy-c.y;
     if (Math.sqrt(dx*dx+dy*dy)<C_HIT) return i;
     const hdy=cy-(c.y+H_OFF);
@@ -3246,8 +3296,8 @@ function onTgtPointerDown(e) {
 
   if (_tgt.mode === 'select') {
     const HIT_POA=22, HIT_SCALE=20, SCALE_H_OFF=11+30;
-    if (_tgt.poa) {
-      const c=imageToCanvas(_tgt.poa.x,_tgt.poa.y),dx=x-c.x,dy=y-c.y;
+    if (activeGroup().poa) {
+      const c=imageToCanvas(activeGroup().poa.x,activeGroup().poa.y),dx=x-c.x,dy=y-c.y;
       if (Math.sqrt(dx*dx+dy*dy)<HIT_POA){_tgt.dragging=true;_tgt.dragType='poa';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
     }
     if (_tgt.scaleP2) {
@@ -3263,7 +3313,7 @@ function onTgtPointerDown(e) {
     const idx=hitTestImpact(x,y);
     if (idx>=0){
       _tgt.selectedIdx=idx;_tgt.dragging=true;_tgt.dragType='impact';
-      const c=imageToCanvas(_tgt.impacts[idx].x,_tgt.impacts[idx].y);
+      const c=imageToCanvas(activeGroup().impacts[idx].x,activeGroup().impacts[idx].y);
       _tgt.dragOffsetX=x-c.x;_tgt.dragOffsetY=y-c.y;
       document.getElementById('tgt-delete-wrap').style.display='';
     } else {
@@ -3275,7 +3325,7 @@ function onTgtPointerDown(e) {
   }
 
   if (_tgt.mode === 'poa') {
-    _tgt.poa = imgPos;
+    activeGroup().poa = imgPos;
     drawTargetCanvas();
     renderTargetStats();
     setTgtMode('impact');
@@ -3302,7 +3352,8 @@ function onTgtPointerDown(e) {
   }
 
   if (_tgt.mode === 'impact') {
-    _tgt.impacts.push({ x: imgPos.x, y: imgPos.y, num: _tgt.impacts.length + 1 });
+    const ag = activeGroup();
+    ag.impacts.push({ x: imgPos.x, y: imgPos.y, num: ag.impacts.length + 1 });
     drawTargetCanvas();
     renderTargetStats();
     return;
@@ -3333,11 +3384,12 @@ function onTgtPointerMove(e) {
   e.preventDefault();
   const {x,y}=getCanvasPos(e);
   const imgPos=canvasToImage(x-_tgt.dragOffsetX,y-_tgt.dragOffsetY);
-  if (_tgt.dragType==='poa'){_tgt.poa=imgPos;drawTargetCanvas();renderTargetStats();return;}
+  if (_tgt.dragType==='poa'){activeGroup().poa=imgPos;drawTargetCanvas();renderTargetStats();return;}
   if (_tgt.dragType==='scale1'){_tgt.scaleP1=imgPos;if(_tgt.scaleP2)computeScale(true);drawTargetCanvas();return;}
   if (_tgt.dragType==='scale2'){_tgt.scaleP2=imgPos;if(_tgt.scaleP1)computeScale(true);drawTargetCanvas();return;}
   if (_tgt.selectedIdx<0) return;
-  _tgt.impacts[_tgt.selectedIdx].x=imgPos.x;_tgt.impacts[_tgt.selectedIdx].y=imgPos.y;
+  const ag = activeGroup();
+  ag.impacts[_tgt.selectedIdx].x=imgPos.x; ag.impacts[_tgt.selectedIdx].y=imgPos.y;
   drawTargetCanvas();renderTargetStats();
 }
 
@@ -3476,71 +3528,82 @@ function drawTargetCanvas() {
     drawScalePt(c2);
   }
 
-  // ── POA crosshair ──
-  if (_tgt.poa) {
-    const c = imageToCanvas(_tgt.poa.x, _tgt.poa.y);
-    const R = 12, ARM = 20;
-    ctx.strokeStyle = '#00e676'; ctx.lineWidth = 2.5; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(c.x-ARM, c.y); ctx.lineTo(c.x-R, c.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x+R, c.y);   ctx.lineTo(c.x+ARM, c.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x, c.y-ARM); ctx.lineTo(c.x, c.y-R); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x, c.y+R);   ctx.lineTo(c.x, c.y+ARM); ctx.stroke();
-    ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI*2);
-    ctx.strokeStyle = '#00e676'; ctx.lineWidth = 2; ctx.stroke();
-  }
-
-  // ── Impacts ──
+  // ── All groups: POA + impacts ──
   const IMPACT_R  = _tgt.impactSize==='sm'?10:_tgt.impactSize==='lg'?26:18;
   const FONT_SZ   = _tgt.impactSize==='sm'? 8:_tgt.impactSize==='lg'?17:13;
   const CHX_GAP   = Math.max(IMPACT_R*0.38,4);
   const HANDLE_OFFSET = 30;
-  _tgt.impacts.forEach((imp, i) => {
-    const c=imageToCanvas(imp.x,imp.y), isSel=_tgt.selectedIdx===i;
-    const ring=isSel?'#b24c3d':'#2c5f88', fill=isSel?'rgba(178,76,61,0.22)':'rgba(44,95,136,0.18)';
-    ctx.beginPath();ctx.arc(c.x,c.y,IMPACT_R,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();
-    ctx.strokeStyle=ring;ctx.lineWidth=isSel?2.5:2;ctx.setLineDash([]);ctx.stroke();
-    // Crosshair arms
-    ctx.strokeStyle=isSel?'rgba(178,76,61,0.9)':'rgba(44,95,136,0.85)';ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.moveTo(c.x-IMPACT_R,c.y);ctx.lineTo(c.x-CHX_GAP,c.y);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(c.x+CHX_GAP,c.y);ctx.lineTo(c.x+IMPACT_R,c.y);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(c.x,c.y-IMPACT_R);ctx.lineTo(c.x,c.y-CHX_GAP);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(c.x,c.y+CHX_GAP);ctx.lineTo(c.x,c.y+IMPACT_R);ctx.stroke();
-    // Number with shadow
-    ctx.font=`bold ${FONT_SZ}px 'Share Tech Mono',monospace`;
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=2.5;ctx.strokeText(imp.num,c.x,c.y);
-    ctx.fillStyle=isSel?'#b24c3d':'#fff';ctx.fillText(imp.num,c.x,c.y);
-    // Diamond handle (edit mode only)
-    if (_tgt.mode==='select') {
-      const hx=c.x, hy=c.y+IMPACT_R+HANDLE_OFFSET;
-      ctx.beginPath();ctx.moveTo(c.x,c.y+IMPACT_R);ctx.lineTo(hx,hy);
-      ctx.strokeStyle=isSel?'rgba(178,76,61,0.7)':'rgba(44,95,136,0.6)';
-      ctx.lineWidth=1.5;ctx.setLineDash([3,2]);ctx.stroke();ctx.setLineDash([]);
-      ctx.save();ctx.translate(hx,hy);ctx.rotate(Math.PI/4);
-      ctx.fillStyle=isSel?'#b24c3d':'#2c5f88';
-      ctx.strokeStyle='rgba(255,255,255,0.8)';ctx.lineWidth=1.5;
-      ctx.fillRect(-7,-7,14,14);ctx.strokeRect(-7,-7,14,14);
-      ctx.restore();
+
+  _tgt.groups.forEach((grp, gIdx) => {
+    const gc = GROUP_COLORS[gIdx % GROUP_COLORS.length];
+    const isActiveGrp = gIdx === _tgt.activeGroupIdx;
+
+    // POA crosshair (3× scale)
+    if (grp.poa) {
+      const c = imageToCanvas(grp.poa.x, grp.poa.y);
+      const R = 36, ARM = 60;
+      ctx.strokeStyle = gc.poa; ctx.lineWidth = isActiveGrp ? 3 : 2; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(c.x-ARM, c.y); ctx.lineTo(c.x-R, c.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c.x+R,   c.y); ctx.lineTo(c.x+ARM, c.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c.x, c.y-ARM); ctx.lineTo(c.x, c.y-R); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c.x, c.y+R);   ctx.lineTo(c.x, c.y+ARM); ctx.stroke();
+      ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI*2);
+      ctx.lineWidth = isActiveGrp ? 2.5 : 1.5; ctx.stroke();
+    }
+
+    // Impacts
+    grp.impacts.forEach((imp, i) => {
+      const isSel = isActiveGrp && _tgt.selectedIdx === i;
+      const ring = isSel ? '#b24c3d' : gc.ring;
+      const fill = isSel ? 'rgba(178,76,61,0.22)' : gc.fill;
+      const alpha = isActiveGrp ? 1 : 0.55;
+      ctx.globalAlpha = alpha;
+      const c = imageToCanvas(imp.x, imp.y);
+      ctx.beginPath();ctx.arc(c.x,c.y,IMPACT_R,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();
+      ctx.strokeStyle=ring;ctx.lineWidth=isSel?2.5:2;ctx.setLineDash([]);ctx.stroke();
+      ctx.strokeStyle=isSel?'rgba(178,76,61,0.9)':gc.ring+'cc';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(c.x-IMPACT_R,c.y);ctx.lineTo(c.x-CHX_GAP,c.y);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(c.x+CHX_GAP,c.y);ctx.lineTo(c.x+IMPACT_R,c.y);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(c.x,c.y-IMPACT_R);ctx.lineTo(c.x,c.y-CHX_GAP);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(c.x,c.y+CHX_GAP);ctx.lineTo(c.x,c.y+IMPACT_R);ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.font=`bold ${FONT_SZ}px 'Share Tech Mono',monospace`;
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=2.5;ctx.strokeText(imp.num,c.x,c.y);
+      ctx.fillStyle=isSel?'#b24c3d':'#fff';ctx.fillText(imp.num,c.x,c.y);
+      if (_tgt.mode==='select' && isActiveGrp) {
+        const hx=c.x, hy=c.y+IMPACT_R+HANDLE_OFFSET;
+        ctx.beginPath();ctx.moveTo(c.x,c.y+IMPACT_R);ctx.lineTo(hx,hy);
+        ctx.strokeStyle=isSel?'rgba(178,76,61,0.7)':gc.ring+'99';
+        ctx.lineWidth=1.5;ctx.setLineDash([3,2]);ctx.stroke();ctx.setLineDash([]);
+        ctx.save();ctx.translate(hx,hy);ctx.rotate(Math.PI/4);
+        ctx.fillStyle=isSel?'#b24c3d':gc.ring;
+        ctx.strokeStyle='rgba(255,255,255,0.8)';ctx.lineWidth=1.5;
+        ctx.fillRect(-7,-7,14,14);ctx.strokeRect(-7,-7,14,14);
+        ctx.restore();
+      }
+    });
+
+    // Group circle overlay
+    if (grp.poa && grp.impacts.length >= 2 && _tgt.scale) {
+      const stats = calcGroupStats(grp);
+      if (stats) {
+        const cc = imageToCanvas(stats.centroid.x, stats.centroid.y);
+        const groupRadiusPx = (stats.groupSize / 2) * _tgt.scale * (canvas.width / _tgt.image.width);
+        ctx.beginPath(); ctx.arc(cc.x, cc.y, groupRadiusPx, 0, Math.PI*2);
+        ctx.strokeStyle = isActiveGrp ? 'rgba(255,255,255,0.35)' : gc.ring + '55';
+        ctx.lineWidth = 1.5; ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(cc.x, cc.y, 4, 0, Math.PI*2);
+        ctx.fillStyle = isActiveGrp ? 'rgba(255,255,255,0.6)' : gc.ring + '99'; ctx.fill();
+      }
     }
   });
 
-  // ── Group circle (smallest enclosing circle approx) ──
-  if (_tgt.poa && _tgt.impacts.length >= 2 && _tgt.scale) {
-    const stats = calcTargetStats();
-    if (stats) {
-      const cc = imageToCanvas(stats.centroid.x, stats.centroid.y);
-      const groupRadiusPx = (stats.groupSize / 2) * _tgt.scale;
-      ctx.beginPath(); ctx.arc(cc.x, cc.y, groupRadiusPx * (canvas.width/_tgt.image.width), 0, Math.PI*2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
-      ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
-      ctx.beginPath(); ctx.arc(cc.x, cc.y, 4, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
-    }
-  }
   // ── Edit-mode drag handles for POA and scale points ──
   if (_tgt.mode==='select') {
-    if (_tgt.poa) {
-      const c=imageToCanvas(_tgt.poa.x,_tgt.poa.y);
+    const ag = activeGroup();
+    if (ag.poa) {
+      const c=imageToCanvas(ag.poa.x,ag.poa.y);
       ctx.beginPath();ctx.arc(c.x,c.y,18,0,Math.PI*2);
       ctx.strokeStyle='rgba(0,230,118,0.8)';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
     }
@@ -3561,114 +3624,107 @@ function drawTargetCanvas() {
 }
 
 window.undoLastImpact = () => {
-  if (_tgt.impacts.length === 0) return;
-  _tgt.impacts.pop();
-  // Renumber
-  _tgt.impacts.forEach((imp,i) => imp.num = i+1);
+  const ag = activeGroup();
+  if (ag.impacts.length === 0) return;
+  ag.impacts.pop();
+  ag.impacts.forEach((imp,i) => imp.num = i+1);
   drawTargetCanvas();
   renderTargetStats();
 };
 window.deleteSelectedImpact = () => {
   if (_tgt.selectedIdx < 0) return;
-  _tgt.impacts.splice(_tgt.selectedIdx, 1);
-  _tgt.impacts.forEach((imp,i) => imp.num = i+1);
+  const ag = activeGroup();
+  ag.impacts.splice(_tgt.selectedIdx, 1);
+  ag.impacts.forEach((imp,i) => imp.num = i+1);
   _tgt.selectedIdx = -1;
   document.getElementById('tgt-delete-wrap').style.display = 'none';
   drawTargetCanvas();
   renderTargetStats();
 };
 window.clearTargetSession = () => {
-  if (!confirm_('Clear all marks? Image will remain.')) return;
-  _tgt.poa = null; _tgt.impacts = []; _tgt.scaleP1 = null; _tgt.scaleP2 = null;
+  if (!confirm_('Clear all marks on all groups? Image will remain.')) return;
+  _tgt.groups = [{ id: 1, label: 'GROUP 1', poa: null, impacts: [] }];
+  _tgt.activeGroupIdx = 0;
+  _tgt.scaleP1 = null; _tgt.scaleP2 = null;
   _tgt.scale = null; _tgt.selectedIdx = -1;
+  renderGroupBar();
   drawTargetCanvas(); renderTargetStats();
 };
 
 // ── Stats engine ──
-function calcTargetStats() {
-  if (!_tgt.poa || _tgt.impacts.length < 1 || !_tgt.scale) return null;
+function calcGroupStats(grp) {
+  if (!grp.poa || grp.impacts.length < 1 || !_tgt.scale) return null;
   const pxPerIn = _tgt.scale;
-  const distIn  = _tgt.distUnit==='m' ? _tgt.distYds * 39.3701 : _tgt.distYds * 36;
-  const moaFactor = 1.047 / 36; // 1 MOA in inches per yard
+  const moaFactor = 1.047 / 36;
 
-  const shots = _tgt.impacts.map(imp => {
-    const dx = (imp.x - _tgt.poa.x) / pxPerIn;  // inches, + = right
-    const dy = (imp.y - _tgt.poa.y) / pxPerIn;  // inches, + = down (image coords)
-    const windage   =  dx;                        // + = right
-    const elevation = -dy;                        // + = up
-    const dist      = Math.sqrt(dx*dx + dy*dy);
-    return { num: imp.num, dist, windage, elevation };
+  const shots = grp.impacts.map(imp => {
+    const dx = (imp.x - grp.poa.x) / pxPerIn;
+    const dy = (imp.y - grp.poa.y) / pxPerIn;
+    return { num: imp.num, dist: Math.sqrt(dx*dx+dy*dy), windage: dx, elevation: -dy };
   });
 
   const cx = shots.reduce((s,sh)=>s+sh.windage,  0) / shots.length;
   const cy = shots.reduce((s,sh)=>s+sh.elevation, 0) / shots.length;
-  const centroid = {
-    x: _tgt.poa.x + cx * pxPerIn,
-    y: _tgt.poa.y - cy * pxPerIn,
-    windage: cx, elevation: cy,
-  };
+  const centroid = { x: grp.poa.x + cx*pxPerIn, y: grp.poa.y - cy*pxPerIn, windage: cx, elevation: cy };
 
-  const meanRadius = shots.reduce((s,sh)=>{
-    const d = Math.sqrt((sh.windage-cx)**2 + (sh.elevation-cy)**2);
-    return s + d;
-  }, 0) / shots.length;
+  const meanRadius = shots.reduce((s,sh)=>s+Math.sqrt((sh.windage-cx)**2+(sh.elevation-cy)**2),0)/shots.length;
 
-  // Group size = max distance between any two impacts
   let groupSize = 0;
-  for (let a=0; a<shots.length; a++) for (let b=a+1; b<shots.length; b++) {
-    const d = Math.sqrt((_tgt.impacts[a].x-_tgt.impacts[b].x)**2+(_tgt.impacts[a].y-_tgt.impacts[b].y)**2)/pxPerIn;
-    if (d > groupSize) groupSize = d;
+  for (let a=0;a<grp.impacts.length;a++) for (let b=a+1;b<grp.impacts.length;b++) {
+    const d=Math.sqrt((grp.impacts[a].x-grp.impacts[b].x)**2+(grp.impacts[a].y-grp.impacts[b].y)**2)/pxPerIn;
+    if (d>groupSize) groupSize=d;
   }
 
-  // W/H spread
-  const winds = shots.map(s=>s.windage), elevs = shots.map(s=>s.elevation);
-  const wSpread = Math.max(...winds) - Math.min(...winds);
-  const hSpread = Math.max(...elevs) - Math.min(...elevs);
-
-  // MOA
-  const yds = _tgt.distUnit==='m' ? _tgt.distYds*1.09361 : _tgt.distYds;
-  const groupMOA     = yds > 0 ? groupSize     / (yds * moaFactor * 36) * 100 / 1.047 : 0;
-  const meanRadMOA   = yds > 0 ? meanRadius    / (yds * moaFactor * 36) * 100 / 1.047 : 0;
+  const winds=shots.map(s=>s.windage), elevs=shots.map(s=>s.elevation);
+  const wSpread=Math.max(...winds)-Math.min(...winds), hSpread=Math.max(...elevs)-Math.min(...elevs);
+  const yds=_tgt.distUnit==='m'?_tgt.distYds*1.09361:_tgt.distYds;
+  const groupMOA   = yds>0 ? groupSize  /(yds*moaFactor*36)*100/1.047 : 0;
+  const meanRadMOA = yds>0 ? meanRadius /(yds*moaFactor*36)*100/1.047 : 0;
 
   return { shots, centroid, meanRadius, groupSize, wSpread, hSpread, groupMOA, meanRadMOA };
 }
+function calcTargetStats() { return calcGroupStats(activeGroup()); }
 
 function renderTargetStats() {
   const el = document.getElementById('tgt-stats-wrap'); if (!el) return;
-  const stats = calcTargetStats();
-  if (!stats) {
-    el.innerHTML = !_tgt.scale ? `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET SCALE → POA → MARK IMPACTS TO SEE STATS</p>` :
-      !_tgt.poa ? `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET POA THEN MARK IMPACTS</p>` :
-      `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// MARK AT LEAST 1 IMPACT</p>`;
+  if (!_tgt.scale) {
+    el.innerHTML = `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET SCALE → POA → MARK IMPACTS TO SEE STATS</p>`;
     return;
   }
-  const {shots, centroid, meanRadius, groupSize, wSpread, hSpread, groupMOA, meanRadMOA} = stats;
 
-  el.innerHTML = `
-    <div class="section-title">Group Statistics</div>
+  const groupsWithStats = _tgt.groups
+    .map((g, i) => ({ grp: g, idx: i, stats: calcGroupStats(g) }))
+    .filter(({stats}) => stats !== null);
+
+  if (groupsWithStats.length === 0) {
+    el.innerHTML = `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET POA THEN MARK IMPACTS</p>`;
+    return;
+  }
+
+  el.innerHTML = groupsWithStats.map(({grp, idx, stats}) => {
+    const col = GROUP_COLORS[idx % GROUP_COLORS.length].ring;
+    const {shots, centroid, meanRadius, groupSize, wSpread, hSpread, groupMOA, meanRadMOA} = stats;
+    return `
+    <div class="section-title" style="color:${col};border-color:${col}">${grp.label} — ${shots.length} shots @ ${_tgt.distYds} ${_tgt.distUnit}</div>
     <div class="tgt-stat-grid">
       <div class="tgt-stat-box hi">
         <div class="tgt-stat-label">Group Size</div>
         <div class="tgt-stat-val">${groupSize.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
-        <div style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-top:2px">${groupMOA.toFixed(2)} MOA</div>
+        <div style="font-size:12px;color:${col};font-family:'Share Tech Mono',monospace;margin-top:2px">${groupMOA.toFixed(2)} MOA</div>
       </div>
       <div class="tgt-stat-box hi">
         <div class="tgt-stat-label">Mean Radius</div>
         <div class="tgt-stat-val">${meanRadius.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
-        <div style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-top:2px">${meanRadMOA.toFixed(2)} MOA</div>
+        <div style="font-size:12px;color:${col};font-family:'Share Tech Mono',monospace;margin-top:2px">${meanRadMOA.toFixed(2)} MOA</div>
       </div>
       <div class="tgt-stat-box">
         <div class="tgt-stat-label">POI-POA Windage</div>
-        <div class="tgt-stat-val" style="color:${Math.abs(centroid.windage)<0.1?'var(--success)':centroid.windage>0?'var(--info)':'var(--info)'}">
-          ${centroid.windage>=0?'+':''}${centroid.windage.toFixed(3)}<span class="tgt-stat-unit">in</span>
-        </div>
+        <div class="tgt-stat-val">${centroid.windage>=0?'+':''}${centroid.windage.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
         <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${centroid.windage>=0?'RIGHT':'LEFT'}</div>
       </div>
       <div class="tgt-stat-box">
         <div class="tgt-stat-label">POI-POA Elevation</div>
-        <div class="tgt-stat-val" style="color:${Math.abs(centroid.elevation)<0.1?'var(--success)':centroid.elevation>0?'var(--success)':'var(--danger)'}">
-          ${centroid.elevation>=0?'+':''}${centroid.elevation.toFixed(3)}<span class="tgt-stat-unit">in</span>
-        </div>
+        <div class="tgt-stat-val">${centroid.elevation>=0?'+':''}${centroid.elevation.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
         <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${centroid.elevation>=0?'HIGH':'LOW'}</div>
       </div>
       <div class="tgt-stat-box">
@@ -3680,17 +3736,15 @@ function renderTargetStats() {
         <div class="tgt-stat-val">${hSpread.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
       </div>
     </div>
-
-    <div class="section-title">Shot Data — ${shots.length} Impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>
-    <div style="overflow-x:auto"><table class="tgt-shot-table">
+    <div style="overflow-x:auto;margin-bottom:16px"><table class="tgt-shot-table">
       <thead><tr><th>#</th><th>Dist (in)</th><th>Wind (in)</th><th>Elev (in)</th></tr></thead>
       <tbody>${shots.map(s=>`<tr>
-        <td>${s.num}</td>
-        <td>${s.dist.toFixed(3)}</td>
-        <td style="color:${s.windage>=0?'var(--info)':'var(--info)'}">${s.windage>=0?'+':''}${s.windage.toFixed(3)}</td>
+        <td>${s.num}</td><td>${s.dist.toFixed(3)}</td>
+        <td style="color:var(--info)">${s.windage>=0?'+':''}${s.windage.toFixed(3)}</td>
         <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
+  }).join('');
 }
 
 // ── Export ──
@@ -3707,19 +3761,16 @@ window.exportTargetSession = async () => {
     distance: _tgt.distYds,
     distance_unit: _tgt.distUnit,
     scale_px_per_in: _tgt.scale,
-    poa: _tgt.poa,
-    impacts: _tgt.impacts,
-    stats: stats ? {
-      group_size_in:    stats.groupSize,
-      group_size_moa:   stats.groupMOA,
-      mean_radius_in:   stats.meanRadius,
-      mean_radius_moa:  stats.meanRadMOA,
-      poi_windage_in:   stats.centroid.windage,
-      poi_elevation_in: stats.centroid.elevation,
-      w_spread_in:      stats.wSpread,
-      h_spread_in:      stats.hSpread,
-      shots:            stats.shots,
-    } : null,
+    groups: _tgt.groups.map((g, i) => {
+      const s = calcGroupStats(g);
+      return {
+        label: g.label, poa: g.poa, impacts: g.impacts,
+        stats: s ? { group_size_in: s.groupSize, group_size_moa: s.groupMOA,
+          mean_radius_in: s.meanRadius, mean_radius_moa: s.meanRadMOA,
+          poi_windage_in: s.centroid.windage, poi_elevation_in: s.centroid.elevation,
+          w_spread_in: s.wSpread, h_spread_in: s.hSpread, shots: s.shots } : null,
+      };
+    }),
     image: _tgt.imageData,
   };
   const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
