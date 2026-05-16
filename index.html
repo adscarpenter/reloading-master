@@ -515,6 +515,7 @@ const ICONS = {
   file:   `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><polygon points="6,2 14,2 20,8 20,22 6,22"/><line x1="14" y1="2" x2="14" y2="8"/><line x1="14" y1="8" x2="20" y2="8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>`,
   target: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>`,
   doc:    `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><polygon points="5,2 16,2 19,5 19,22 5,22"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="16" y1="6" x2="19" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="13" y2="18"/></svg>`,
+  copy:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter"><rect x="9" y="9" width="13" height="13"/><polyline points="5,15 2,15 2,2 15,2 15,5"/></svg>`,
   erricon:`<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><polyline points="12,3 22,21 2,21 12,3"/><line x1="12" y1="10" x2="12" y2="15"/><line x1="12" y1="18" x2="12" y2="19"/></svg>`,
 };
 
@@ -628,6 +629,21 @@ function toast(msg, type='') {
   clearTimeout(el._t); el._t = setTimeout(() => el.className='', 2800);
 }
 const confirm_ = msg => window.confirm(msg);
+function confirmModal(msg, label, onYes) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
+  ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);padding:24px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+    <div style="font-size:13px;line-height:1.7;color:var(--text);margin-bottom:20px;font-family:'Share Tech Mono',monospace">${msg}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary btn-sm" id="cfm-cancel">CANCEL</button>
+      <button class="btn btn-danger btn-sm" id="cfm-ok">${label||'CONFIRM'}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#cfm-cancel').onclick = () => ov.remove();
+  ov.querySelector('#cfm-ok').onclick = () => { ov.remove(); onYes(); };
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+}
 const fmt = (n,d=1) => (n==null||isNaN(n)) ? '—' : Number(n).toFixed(d);
 function fmtDate(d) {
   if (!d) return '—';
@@ -1496,7 +1512,7 @@ async function renderBatchForm(batch) {
 
     <div class="section-title">Chambering & Components</div>
     <div class="form-group"><label>Chambering *</label>
-      <select class="form-control" id="b-chambering">
+      <select class="form-control" id="b-chambering" onchange="updateBatchNamePreview()">
         <option value="">— Select —</option>${chamberOpts}
       </select>
     </div>
@@ -1517,7 +1533,7 @@ async function renderBatchForm(batch) {
     <div id="hl-fields" style="${b.is_factory?'display:none':''}">
     <div class="form-row">
       <div class="form-group"><label>Powder</label>
-        <select class="form-control" id="b-powder">
+        <select class="form-control" id="b-powder" onchange="updateBatchNamePreview()">
           <option value="">— Select —</option>${selOpt(powders,b.powder)}
         </select>
       </div>
@@ -1536,7 +1552,7 @@ async function renderBatchForm(batch) {
     <div class="section-title">Load Type</div>
     <div class="form-row">
       <div class="form-group"><label>Type *</label>
-        <select class="form-control" id="b-type" onchange="onBatchTypeChange()">${typeOpts}
+        <select class="form-control" id="b-type" onchange="onBatchTypeChange();updateBatchNamePreview()">${typeOpts}
         </select>
       </div>
       <div class="form-group" id="b-count-group"><label>Total Rounds</label>
@@ -1546,12 +1562,12 @@ async function renderBatchForm(batch) {
 
     <div id="flat-charge-wrap">
       <div id="charge-fixed-group" class="form-group"><label>Charge Weight (gr)</label>
-        <input class="form-control" id="b-charge-fixed" type="number" inputmode="decimal" step="0.1" value="${b.charge_fixed??''}">
+        <input class="form-control" id="b-charge-fixed" type="number" inputmode="decimal" step="0.1" value="${b.charge_fixed??''}" oninput="updateBatchNamePreview()">
       </div>
       <div id="charge-range-group" style="display:none">
         <div class="form-row three">
-          <div class="form-group"><label>Min (gr)</label><input class="form-control" id="b-charge-min" type="number" inputmode="decimal" step="0.1" value="${b.charge_min??''}"></div>
-          <div class="form-group"><label>Max (gr)</label><input class="form-control" id="b-charge-max" type="number" inputmode="decimal" step="0.1" value="${b.charge_max??''}"></div>
+          <div class="form-group"><label>Min (gr)</label><input class="form-control" id="b-charge-min" type="number" inputmode="decimal" step="0.1" value="${b.charge_min??''}" oninput="updateBatchNamePreview()"></div>
+          <div class="form-group"><label>Max (gr)</label><input class="form-control" id="b-charge-max" type="number" inputmode="decimal" step="0.1" value="${b.charge_max??''}" oninput="updateBatchNamePreview()"></div>
           <div class="form-group"><label>Steps</label><input class="form-control" id="b-charge-steps" type="number" inputmode="numeric" min="1" value="1"></div>
         </div>
       </div>
@@ -1635,6 +1651,15 @@ async function renderBatchForm(batch) {
       <textarea class="form-control" id="b-notes">${b.notes||''}</textarea>
     </div>
 
+    ${!batch?`<div class="form-group" style="margin-top:4px">
+      <label style="display:flex;align-items:center;gap:8px">Batch Name
+        <span style="font-size:10px;font-weight:400;color:var(--muted2);font-family:'Share Tech Mono',monospace;letter-spacing:0">// auto-generated · editable</span>
+      </label>
+      <input class="form-control" id="b-batch-name" style="font-family:'Share Tech Mono',monospace"
+        placeholder="Fill fields above to generate…"
+        oninput="this.dataset.manual='true'">
+    </div>`:''}
+
     <div class="btn-group" style="margin-top:8px">
       ${mkBtn(batch?'SAVE CHANGES':'CREATE BATCH','btn-primary',batch?`updateBatch('${batch.id}')`:'saveBatch()','save')}
       ${batch?mkBtn('DELETE','btn-danger',`deleteBatch('${batch.id}')`):''}
@@ -1672,6 +1697,23 @@ window.toggleFactoryMode = () => {
   if (facFields) facFields.style.display = nowOn ? '' : 'none';
 };
 
+// ── Batch name live preview ──
+window.updateBatchNamePreview = async () => {
+  const nameEl = document.getElementById('b-batch-name');
+  if (!nameEl || nameEl.dataset.manual === 'true') return;
+  const bullet     = document.getElementById('b-bullet')?.value; if (!bullet) return;
+  const chambering = document.getElementById('b-chambering')?.value||'';
+  const powder     = document.getElementById('b-powder')?.value||'';
+  const type       = document.getElementById('b-type')?.value||'Validation Batch';
+  const chMin  = document.getElementById('b-charge-min')?.value  || document.getElementById('b-auto-cmin')?.value  || '';
+  const chMax  = document.getElementById('b-charge-max')?.value  || document.getElementById('b-auto-cmax')?.value  || '';
+  const chFix  = document.getElementById('b-charge-fixed')?.value|| document.getElementById('b-auto-cfixed')?.value|| '';
+  const chargeStr = chMin ? `${chMin}-${chMax}` : (chFix||'');
+  const bulletInv = await getBulletData(bullet);
+  const bulletWt  = bulletInv?.bullet_weight_gr ?? null;
+  nameEl.value = genBatchId(chambering, bullet, type, chargeStr, bulletWt, powder);
+};
+
 // ── Bullet reference auto-fill ──
 window.onBatchBulletChange = async () => {
   const name = document.getElementById('b-bullet')?.value; if (!name) return;
@@ -1695,6 +1737,7 @@ window.onBatchBulletChange = async () => {
   } else {
     refEl.style.display = 'none';
   }
+  updateBatchNamePreview();
 };
 
 // ── Jump step calculator ──
@@ -1990,10 +2033,11 @@ window.saveBatch = async () => {
   const facLabel=fields.is_factory?[fields.factory_mfr,fields.factory_product].filter(Boolean).join('-'):'';
   const bulletInv=await getBulletData(fields.bullet);
   const bulletWt=bulletInv?.bullet_weight_gr??null;
-  let id=fields.is_factory
+  const customName=document.getElementById('b-batch-name')?.value.trim().replace(/\s+/g,'-').replace(/[^A-Z0-9\-_.]/gi,'').toUpperCase()||'';
+  let id=customName||( fields.is_factory
     ?`FAC-${(facLabel||fields.bullet||'load').replace(/[^a-z0-9]/gi,'-').toUpperCase()}-${Date.now().toString(36).slice(-4)}`
-    :genBatchId(fields.chambering,fields.bullet,fields.load_dev_type,chargeStr,bulletWt,fields.powder);
-  if (await dbGet('batches',id)) id+='-'+Date.now().toString(36);
+    :genBatchId(fields.chambering,fields.bullet,fields.load_dev_type,chargeStr,bulletWt,fields.powder) );
+  if (await dbGet('batches',id)) id+='-'+Date.now().toString(36).slice(-4);
   const batch={...fields, id, shots:[], created_at:new Date().toISOString()};
   await dbPut('batches',batch); toast('BATCH CREATED','success'); navigate('batch/'+id);
 };
@@ -2094,6 +2138,7 @@ function renderRecipeTab(batch) {
     </div></div>
     <div class="btn-group">
       ${mkBtnSm('EDIT BATCH','btn-secondary',`navigate('batches/edit/${batch.id}')`, 'edit')}
+      ${mkBtnSm('DUPLICATE','btn-secondary',`duplicateBatch('${batch.id}')`, 'copy')}
       ${mkBtnSm('DELETE','btn-danger',`deleteBatch('${batch.id}')`, 'trash')}
     </div>`;
 }
@@ -2378,9 +2423,20 @@ window.recomputeDrop = async batchId => {
     </div>
     <p style="font-size:11px;color:var(--muted);margin-top:8px;font-family:'Share Tech Mono',monospace">// BC ${bcType}: ${bc} · MV: ${Math.round(mv)} FPS · ${wt} GR · ${temp}°F / ${alt}FT / ${hum}%RH · ${intv}YD INTERVALS</p>`;
 };
-window.deleteBatch = async batchId => {
-  if (!confirm_(`Delete batch ${batchId}?`)) return;
-  await dbDelete('batches',batchId); toast('DELETED'); navigate('batches');
+window.deleteBatch = batchId => {
+  confirmModal(`Delete batch<br><span style="color:var(--accent)">${batchId}</span>?<br><br>This cannot be undone.`, 'DELETE', async () => {
+    await dbDelete('batches', batchId); toast('DELETED'); navigate('batches');
+  });
+};
+window.duplicateBatch = async batchId => {
+  const src = await dbGet('batches', batchId); if (!src) return;
+  const copy = {...src, shots:[], range_sessions:[], created_at:new Date().toISOString()};
+  let newId = src.id + '-COPY';
+  if (await dbGet('batches', newId)) newId += '-' + Date.now().toString(36).slice(-4);
+  copy.id = newId;
+  await dbPut('batches', copy);
+  toast('BATCH DUPLICATED','success');
+  navigate('batch/' + newId);
 };
 
 // ════════════════════════════════════════════════════
