@@ -1382,29 +1382,44 @@ window.deleteComponent = async (id) => { if (!confirm_('Remove this component?')
 register('batches', async () => {
   setTitle('BATCHES', false, `<button class="action-btn" onclick="navigate('batches/new')">${ICONS.plus} NEW</button>`);
   const batches=await dbGetAll('batches');
-  const sorted=[...batches].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-  render(sorted.length===0?`
-    <div class="empty-state">
+  if (!batches.length) {
+    render(`<div class="empty-state">
       <div class="empty-icon">${ICONS.doc}</div>
       <h3>No Batches On File</h3>
       <p>Create a new batch to start tracking a load development session.</p>
       <div style="margin-top:20px">${mkBtn('NEW BATCH','btn-primary',"navigate('batches/new')","plus")}</div>
-    </div>` :
-    sorted.map(b=>{
-      const stats=b.shots?.length?calcStats(b.shots.map(s=>s.velocity)):null;
-      const isGrouped=b.group_mode&&b.group_mode!=='none';
-      const isFac=b.is_factory;
-      const badgeClass=isFac?'badge-factory':isGrouped?'badge-grouped':b.load_dev_type==='Charge Ladder'?'badge-ladder':'';
-      const badgeText=isFac?'FAC':isGrouped?'GRP':b.load_dev_type==='Charge Ladder'?'LADDER':'';
-      const subLine=isFac?`${b.factory_mfr||'—'} · ${b.factory_product||'—'}`:`${b.bullet||'—'} · ${b.powder||'—'}`;
-      return `<div class="list-item" onclick="navigate('batch/${b.id}')">
-        <div class="info"><h4>${b.id}</h4><p>${subLine}</p></div>
-        ${badgeText?`<span class="badge ${badgeClass}">${badgeText}</span>`:''}
-        ${stats&&stats.n>0?`<span class="badge badge-val mono">${Math.round(stats.avg)}</span>`:''}
-        <span class="chevron">›</span>
-      </div>`;
-    }).join('')
-  );
+    </div>`);
+    return;
+  }
+  const sorted=[...batches].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  // Group by chambering; unlabeled batches go into 'Other' at the end
+  const groups=new Map();
+  for (const b of sorted) {
+    const key=b.chambering||'Other';
+    if (!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(b);
+  }
+  if (groups.has('Other')) { const o=groups.get('Other'); groups.delete('Other'); groups.set('Other',o); }
+  const renderBatchItem = b => {
+    const stats=b.shots?.length?calcStats(b.shots.map(s=>s.velocity)):null;
+    const isGrouped=b.group_mode&&b.group_mode!=='none';
+    const isFac=b.is_factory;
+    const badgeClass=isFac?'badge-factory':isGrouped?'badge-grouped':b.load_dev_type==='Charge Ladder'?'badge-ladder':'';
+    const badgeText=isFac?'FAC':isGrouped?'GRP':b.load_dev_type==='Charge Ladder'?'LADDER':'';
+    const subLine=isFac?`${b.factory_mfr||'—'} · ${b.factory_product||'—'}`:`${b.bullet||'—'} · ${b.powder||'—'}`;
+    return `<div class="list-item" onclick="navigate('batch/${b.id}')">
+      <div class="info"><h4>${b.id}</h4><p>${subLine}</p></div>
+      ${badgeText?`<span class="badge ${badgeClass}">${badgeText}</span>`:''}
+      ${stats&&stats.n>0?`<span class="badge badge-val mono">${Math.round(stats.avg)}</span>`:''}
+      <span class="chevron">›</span>
+    </div>`;
+  };
+  let html='';
+  for (const [chambering,items] of groups) {
+    html+=`<div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);padding:14px 0 6px;border-bottom:1px solid var(--border);margin-bottom:2px">${chambering} <span style="font-weight:400;opacity:.6">(${items.length})</span></div>`;
+    html+=items.map(renderBatchItem).join('');
+  }
+  render(html);
 });
 
 // ════════════════════════════════════════════════════
