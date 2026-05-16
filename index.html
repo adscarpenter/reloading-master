@@ -640,12 +640,19 @@ function calcStats(velos) {
   const sd  = Math.sqrt(v.reduce((s,x)=>s+(x-avg)**2,0)/v.length);
   return { avg, sd, es: Math.max(...v)-Math.min(...v), n: v.length };
 }
-function genBatchId(chambering, bullet, loadType, suffix, bulletWeightGr) {
-  const b = bullet.replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
-  const ch = (chambering||'UNKN').replace(/\bWinchester\b/gi,'WIN').replace(/\bRemington\b/gi,'REM').replace(/\bMagnum\b/gi,'MAG').replace(/\bCreedmoor\b/gi,'CM').replace(/\bSpringfield\b/gi,'SPRG').replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
-  const tc = loadType==='Charge Ladder'?'CHG':loadType==='Jump Ladder'?'JUMP':loadType==='Grouped'?'GRP':'VAL';
-  const wt = bulletWeightGr!=null ? `${Math.round(bulletWeightGr)}GR-` : '';
-  return `${ch}-${wt}${b}-${tc}${suffix?'-'+suffix:''}`;
+function genBatchId(chambering, bullet, loadType, suffix, bulletWeightGr, powder) {
+  // Bullet: maker abbrev (3) + weight + model
+  const words = bullet.trim().split(/\s+/);
+  const maker = (words[0]||'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,3);
+  const modelWords = words.slice(1).filter(w => !/^\d+\.?\d*(gr)?$/i.test(w));
+  const model = modelWords.join('').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,6);
+  const wt = bulletWeightGr != null ? String(Math.round(bulletWeightGr)) : '';
+  const bulletPart = `${maker}${wt}${model}`;
+  // Load type
+  const tc = loadType==='Charge Ladder'?'CHLDR':loadType==='Jump Ladder'?'JMPLDR':loadType==='Grouped'?'GRP':'VAL';
+  // Powder
+  const pw = powder ? powder.replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,10) : '';
+  return `${bulletPart}-${tc}${suffix?'-'+suffix:''}${pw?'-'+pw:''}`;
 }
 
 // ── Reusable button HTML ──
@@ -1788,17 +1795,26 @@ window.onRSFirearmChange = async (idx) => {
   const fa = firearms.find(f => f.name === firearmName);
   const veloEl = document.getElementById(`rs-velo-${idx}`);
   if (!veloEl) return;
-  const rdsVmin = parseFloat(document.getElementById('b-rds-vmin')?.value);
-  const rdsVmax = parseFloat(document.getElementById('b-rds-vmax')?.value);
-  const rdsBL   = parseFloat(document.getElementById('b-rds-bl')?.value);
-  if (!isNaN(rdsVmin) && !isNaN(rdsVmax)) {
-    const faBL = fa?.barrel_length;
-    const diff = (faBL && !isNaN(rdsBL)) ? faBL - rdsBL : null;
-    const adj  = diff !== null ? Math.round(diff * 25) : 0;
-    const vlo  = Math.round(rdsVmin + adj), vhi = Math.round(rdsVmax + adj);
-    const adjTag = diff !== null && diff !== 0
-      ? ` <span style="color:var(--muted2)">(${diff>=0?'+':''}${diff}" · ${adj>=0?'+':''}${adj} fps)</span>` : '';
+  const formBatch = {
+    rds_velo_min:      parseFloat(document.getElementById('b-rds-vmin')?.value)||null,
+    rds_velo_max:      parseFloat(document.getElementById('b-rds-vmax')?.value)||null,
+    rds_charge_min:    parseFloat(document.getElementById('b-rds-cmin')?.value)||null,
+    rds_charge_max:    parseFloat(document.getElementById('b-rds-cmax')?.value)||null,
+    rds_barrel_length: parseFloat(document.getElementById('b-rds-bl')?.value)||null,
+    charge_min:   parseFloat(document.getElementById('b-charge-min')?.value)||parseFloat(document.getElementById('b-auto-cmin')?.value)||null,
+    charge_max:   parseFloat(document.getElementById('b-charge-max')?.value)||parseFloat(document.getElementById('b-auto-cmax')?.value)||null,
+    charge_fixed: parseFloat(document.getElementById('b-charge-fixed')?.value)||parseFloat(document.getElementById('b-auto-cfixed')?.value)||null,
+  };
+  const pb  = projectedBatchVelo(formBatch);
+  const diff = (fa?.barrel_length && formBatch.rds_barrel_length) ? fa.barrel_length - formBatch.rds_barrel_length : null;
+  const adj  = diff !== null ? Math.round(diff * 25) : 0;
+  const adjTag = adj !== 0 ? ` <span style="color:var(--muted2)">(${adj>=0?'+':''}${adj} fps BL adj)</span>` : '';
+  if (pb) {
+    const vlo = pb.bVmin + adj, vhi = pb.bVmax + adj;
     veloEl.innerHTML = `<div style="font-size:11px;font-family:'Share Tech Mono',monospace;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">// EST. VELO <span style="color:var(--accent);font-weight:700">${vlo}–${vhi} fps</span>${adjTag}</div>`;
+  } else if (formBatch.rds_velo_min && formBatch.rds_velo_max) {
+    const vlo = Math.round(formBatch.rds_velo_min + adj), vhi = Math.round(formBatch.rds_velo_max + adj);
+    veloEl.innerHTML = `<div style="font-size:11px;font-family:'Share Tech Mono',monospace;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">// RDS VELO <span style="color:var(--accent);font-weight:700">${vlo}–${vhi} fps</span>${adjTag}</div>`;
   } else {
     veloEl.innerHTML = '';
   }
@@ -1961,7 +1977,7 @@ window.saveBatch = async () => {
   const bulletWt=bulletInv?.bullet_weight_gr??null;
   let id=fields.is_factory
     ?`FAC-${(facLabel||fields.bullet||'load').replace(/[^a-z0-9]/gi,'-').toUpperCase()}-${Date.now().toString(36).slice(-4)}`
-    :genBatchId(fields.chambering,fields.bullet,fields.load_dev_type,chargeStr,bulletWt);
+    :genBatchId(fields.chambering,fields.bullet,fields.load_dev_type,chargeStr,bulletWt,fields.powder);
   if (await dbGet('batches',id)) id+='-'+Date.now().toString(36);
   const batch={...fields, id, shots:[], created_at:new Date().toISOString()};
   await dbPut('batches',batch); toast('BATCH CREATED','success'); navigate('batch/'+id);
