@@ -768,14 +768,32 @@ function generateCartridges(batch) {
 }
 
 function bookVeloForRound(batch, cart) {
-  const minV=batch.rds_velo_min, maxV=batch.rds_velo_max;
-  const minC=batch.rds_charge_min??batch.charge_min??batch.charge_fixed;
-  const maxC=batch.rds_charge_max??batch.charge_max??batch.charge_fixed;
-  if (!minV||!maxV) return null;
-  if (!minC||!maxC||minC===maxC) return Math.round((minV+maxV)/2);
-  const charge = cart.charge ?? minC;
-  const t = Math.max(0,Math.min(1,(charge-minC)/(maxC-minC)));
-  return Math.round(minV + t*(maxV-minV));
+  const rdsVmin=batch.rds_velo_min, rdsVmax=batch.rds_velo_max;
+  const rdsCmin=batch.rds_charge_min??batch.charge_min??batch.charge_fixed;
+  const rdsCmax=batch.rds_charge_max??batch.charge_max??batch.charge_fixed;
+  if (!rdsVmin||!rdsVmax) return null;
+  if (!rdsCmin||!rdsCmax||rdsCmin===rdsCmax) return Math.round((rdsVmin+rdsVmax)/2);
+  const slope = (rdsVmax - rdsVmin) / (rdsCmax - rdsCmin);
+  const batchCmin = batch.charge_min??batch.charge_fixed??rdsCmin;
+  const batchCmax = batch.charge_max??batch.charge_fixed??rdsCmax;
+  const batchVmin = rdsVmin + slope * (batchCmin - rdsCmin);
+  const batchVmax = rdsVmin + slope * (batchCmax - rdsCmin);
+  const charge = cart.charge ?? batchCmin;
+  if (batchCmin === batchCmax) return Math.round(batchVmin);
+  const t = Math.max(0, Math.min(1, (charge - batchCmin) / (batchCmax - batchCmin)));
+  return Math.round(batchVmin + t * (batchVmax - batchVmin));
+}
+function projectedBatchVelo(batch) {
+  const rdsVmin=batch.rds_velo_min, rdsVmax=batch.rds_velo_max;
+  const rdsCmin=batch.rds_charge_min??batch.charge_min??batch.charge_fixed;
+  const rdsCmax=batch.rds_charge_max??batch.charge_max??batch.charge_fixed;
+  if (!rdsVmin||!rdsVmax||!rdsCmin||!rdsCmax||rdsCmin===rdsCmax) return null;
+  const slope = (rdsVmax - rdsVmin) / (rdsCmax - rdsCmin);
+  const bCmin = batch.charge_min??batch.charge_fixed;
+  const bCmax = batch.charge_max??batch.charge_fixed;
+  if (!bCmin&&!bCmax) return null;
+  const lo = bCmin??bCmax, hi = bCmax??bCmin;
+  return { bVmin: Math.round(rdsVmin + slope*(lo-rdsCmin)), bVmax: Math.round(rdsVmin + slope*(hi-rdsCmin)), slope, bCmin:lo, bCmax:hi };
 }
 
 function adjVelo(batch, firearm, bookVelo) {
@@ -2027,7 +2045,7 @@ function renderLoadTable(batch) {
       <td class="lt-done"><label class="lt-checkbox"><input type="checkbox" ${c.loaded?'checked':''} onchange="toggleLoaded('${batch.id}',${i},this.checked)"><span class="lt-checkmark"></span></label></td>
       <td class="lt-num">${c.num}</td>
       <td class="lt-charge">${c.charge!=null?c.charge:'—'}</td>
-      <td style="font-family:'Share Tech Mono',monospace;font-size:14px">${c.coal!=null?fmt(c.coal,3):'—'}</td>
+      <td style="font-family:'Share Tech Mono',monospace;font-size:14px">${batch.rifle_seating?.[0]?.cbto!=null?fmt(batch.rifle_seating[0].cbto,3):(c.coal!=null?fmt(c.coal,3):'—')}</td>
       <td style="font-family:'Share Tech Mono',monospace;font-size:14px">${c.jump!=null?fmt(c.jump,3):'—'}</td>
       <td><input class="lt-note-input" placeholder="notes..." value="${c.notes||''}" onblur="saveCartridgeNote('${batch.id}',${i},this.value)"></td>
     </tr>`;
@@ -2070,7 +2088,7 @@ function renderLoadTable(batch) {
     </div>
     <div class="card"><div class="card-header"><div class="marker"></div><h3>Bench Reference</h3><div class="hdr-tag">${batch.bullet||'—'} · ${batch.powder||'—'}</div></div>
       <div style="overflow-x:auto"><table class="load-bench-table">
-        <thead><tr><th></th><th>#</th><th>Charge</th><th>COAL"</th><th>Jump"</th><th>Notes</th></tr></thead>
+        <thead><tr><th></th><th>#</th><th>Charge</th><th>CBTO"</th><th>Jump"</th><th>Notes</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;
@@ -2325,12 +2343,17 @@ routes['range-card'] = async ({id}) => {
 
   // Determine if batch is in manual-entry mode: firearm_id doesn't match any registered firearm
   const matchedFirearm = firearms.find(f=>f.name===batch.firearm_id) || null;
-  // If no firearm_id at all and no manual barrel saved, default to first firearm (legacy behavior)
   const isManualMode = !matchedFirearm && (batch.range_barrel_length!=null || firearms.length===0 || batch.firearm_id==='__manual__');
-  const currentFirearm = matchedFirearm || (firearms.length && !isManualMode ? firearms[0] : null);
+  const seatingIds = (batch.rifle_seating||[]).map(rs=>rs.firearm_id).filter(Boolean);
+  const primarySeatingFirearm = seatingIds.length ? firearms.find(f=>f.name===seatingIds[0]) : null;
+  const currentFirearm = matchedFirearm || (!isManualMode ? (primarySeatingFirearm||(firearms.length?firearms[0]:null)) : null);
 
   const fOpts = `<option value="__manual__" ${isManualMode?'selected':''}>— Manual Entry —</option>` +
-    firearms.map(f=>{const bl=f.barrel_length?(f.barrel_length+'in'):'?in';return `<option value="${f.name}" ${currentFirearm&&f.name===currentFirearm.name?'selected':''}>${f.name} (${bl})</option>`;}).join('');
+    firearms.map(f=>{
+      const bl=f.barrel_length?(f.barrel_length+'in'):'?in';
+      const star=seatingIds.includes(f.name)?'★ ':'';
+      return `<option value="${f.name}" ${currentFirearm&&f.name===currentFirearm.name?'selected':''}>${star}${f.name} (${bl})</option>`;
+    }).join('');
 
   // Effective firearm at initial render — used to compute EXP MV per row
   const effectiveFirearmAtRender = isManualMode
@@ -2454,12 +2477,18 @@ function updateRangeRDSBar(batch, firearm) {
   const rdsBarrel=batch.rds_barrel_length, faBarrel=firearm?.barrel_length;
   const diff=faBarrel&&rdsBarrel?(faBarrel-rdsBarrel):null;
   const adjLabel=diff!=null?`${diff>=0?'+':''}${diff}" (${diff>=0?'+':''}${Math.round(diff*25)} fps)`:'—';
+  const pb=projectedBatchVelo(batch);
+  const row2=pb?`<div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+    <div><div class="rc-label">Batch Charge</div><div style="font-size:13px;font-weight:700;color:var(--accent);margin-top:2px;font-family:'Share Tech Mono',monospace">${pb.bCmin===pb.bCmax?pb.bCmin+' gr':pb.bCmin+'–'+pb.bCmax+' gr'}</div></div>
+    <div><div class="rc-label">Projected Velo</div><div style="font-size:13px;font-weight:700;color:var(--accent);margin-top:2px;font-family:'Share Tech Mono',monospace">${pb.bVmin===pb.bVmax?pb.bVmin+' fps':pb.bVmin+'–'+pb.bVmax+' fps'}</div></div>
+    <div><div class="rc-label">RDS Slope</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-top:2px;font-family:'Share Tech Mono',monospace">${pb.slope.toFixed(1)} fps/gr</div></div>
+  </div>`:'';
   el.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap">
     <div><div class="rc-label">RDS Source</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-top:2px;font-family:'Share Tech Mono',monospace">${batch.rds_source||'—'}</div></div>
     <div><div class="rc-label">RDS Barrel</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-top:2px;font-family:'Share Tech Mono',monospace">${rdsBarrel?rdsBarrel+'"':'—'}</div></div>
     <div><div class="rc-label">Your Barrel</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-top:2px;font-family:'Share Tech Mono',monospace">${faBarrel?faBarrel+'"':'—'}</div></div>
     <div><div class="rc-label">Barrel Adj</div><div style="font-size:13px;font-weight:700;margin-top:2px;font-family:'Share Tech Mono',monospace;color:${diff!=null?(diff>=0?'var(--success)':'var(--danger)'):'var(--muted2)'}">${adjLabel}</div></div>
-  </div>`;
+  </div>${row2}`;
 }
 // Build effective firearm using DOM state. Two modes:
 //   1) Registered firearm selected → return that firearm
@@ -2591,18 +2620,19 @@ window.openShotDetail = async (batchId, idx) => {
       <div class="det-section">
         <div class="det-section-head">Reference Velocities</div>
         <div class="det-row">
-          <div class="det-row-label">Book Velo</div>
+          <div class="det-row-label">Expected</div>
           <div class="det-row-val info">${bv!=null?bv:'—'}<span class="det-unit">fps</span></div>
         </div>
         <div class="det-row">
-          <div class="det-row-label">ADJ Velo<br><span style="font-size:10px;color:var(--muted);letter-spacing:.5px;font-weight:600;text-transform:none">${firearm?.barrel_length&&batch.rds_barrel_length?firearm.barrel_length+'" vs '+batch.rds_barrel_length+'" RDS':'barrel data missing'}</span></div>
+          <div class="det-row-label">ADJ Expected<br><span style="font-size:10px;color:var(--muted);letter-spacing:.5px;font-weight:600;text-transform:none">${firearm?.barrel_length&&batch.rds_barrel_length?firearm.barrel_length+'" vs '+batch.rds_barrel_length+'" RDS':'barrel data missing'}</span></div>
           <div class="det-row-val ${av!=null?(av>=(bv||0)?'success':'danger'):''}">
             ${av!=null?av:'—'}<span class="det-unit">fps</span>
           </div>
         </div>
         ${hasVelo?`
         <div class="det-row"><div class="det-row-label">Actual</div><div class="det-row-val success">${Math.round(shot.velocity)}<span class="det-unit">fps</span></div></div>
-        ${av!=null?`<div class="det-row"><div class="det-row-label">vs ADJ Velo</div><div class="det-row-val ${shot.velocity-av>=0?'success':'danger'}">${shot.velocity-av>=0?'+':''}${Math.round(shot.velocity-av)}<span class="det-unit">fps</span></div></div>`:''}
+        ${bv!=null?`<div class="det-row"><div class="det-row-label">vs Expected</div><div class="det-row-val ${shot.velocity-bv>=0?'success':'danger'}">${shot.velocity-bv>=0?'+':''}${Math.round(shot.velocity-bv)}<span class="det-unit">fps</span></div></div>`:''}
+        ${av!=null?`<div class="det-row"><div class="det-row-label">vs ADJ Expected</div><div class="det-row-val ${shot.velocity-av>=0?'success':'danger'}">${shot.velocity-av>=0?'+':''}${Math.round(shot.velocity-av)}<span class="det-unit">fps</span></div></div>`:''}
         ${delta!=null?`<div class="det-row"><div class="det-row-label">Δ Session Avg</div><div class="det-row-val ${delta>=0?'success':'danger'}">${delta>=0?'+':''}${fmt(delta,1)}<span class="det-unit">fps</span></div></div>`:''}
         `:''}
       </div>
