@@ -642,7 +642,7 @@ function calcStats(velos) {
 }
 function genBatchId(chambering, bullet, loadType, suffix) {
   const b = bullet.replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,10);
-  const ch = (chambering||'UNKN').replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
+  const ch = (chambering||'UNKN').replace(/\bWinchester\b/gi,'WIN').replace(/\bRemington\b/gi,'REM').replace(/\bMagnum\b/gi,'MAG').replace(/\bCreedmoor\b/gi,'CM').replace(/\bSpringfield\b/gi,'SPRG').replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
   const tc = loadType==='Charge Ladder'?'CHG':loadType==='Seating Ladder'?'SEAT':loadType==='Jump Ladder'?'JUMP':loadType==='Grouped'?'GRP':'VAL';
   return `${ch}-${b}-${tc}${suffix?'-'+suffix:''}`;
 }
@@ -1430,7 +1430,7 @@ async function renderBatchForm(batch) {
   const chamberings=['308 Winchester','223 Remington','6.5 Creedmoor','6mm Creedmoor','300 Winchester Magnum','6.5 PRC','243 Winchester','30-06 Springfield','7mm Remington Magnum','6mm ARC','22-250 Remington','204 Ruger'];
   const chamberOpts=chamberings.map(ch=>`<option ${ch===(b.chambering||'')?'selected':''}>${ch}</option>`).join('');
 
-  const typeOpts=['Validation Batch','Charge Ladder','Seating Ladder','Jump Ladder','Grouped'].map(t=>`<option ${t===(b.load_dev_type||'Validation Batch')?'selected':''}>${t}</option>`).join('');
+  const typeOpts=['Validation Batch','Charge Ladder','Jump Ladder','Grouped'].map(t=>`<option ${t===(b.load_dev_type||'Validation Batch')?'selected':''}>${t}</option>`).join('');
   const gMode=b.group_mode||'none';
 
   // Per-rifle seating blocks (stored in batch.rifle_seating array)
@@ -2044,7 +2044,7 @@ function renderLoadTable(batch) {
     rows+=`<tr id="lt-row-${i}" class="${c.loaded?'lt-done-row':''}">
       <td class="lt-done"><label class="lt-checkbox"><input type="checkbox" ${c.loaded?'checked':''} onchange="toggleLoaded('${batch.id}',${i},this.checked)"><span class="lt-checkmark"></span></label></td>
       <td class="lt-num">${c.num}</td>
-      <td class="lt-charge">${c.charge!=null?c.charge:'—'}</td>
+      <td class="lt-charge">${c.charge!=null?(+c.charge).toFixed(1):'—'}</td>
       <td style="font-family:'Share Tech Mono',monospace;font-size:14px">${batch.rifle_seating?.[0]?.cbto!=null?fmt(batch.rifle_seating[0].cbto,3):(c.coal!=null?fmt(c.coal,3):'—')}</td>
       <td style="font-family:'Share Tech Mono',monospace;font-size:14px">${c.jump!=null?fmt(c.jump,3):'—'}</td>
       <td><input class="lt-note-input" placeholder="notes..." value="${c.notes||''}" onblur="saveCartridgeNote('${batch.id}',${i},this.value)"></td>
