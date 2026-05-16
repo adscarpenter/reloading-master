@@ -640,11 +640,12 @@ function calcStats(velos) {
   const sd  = Math.sqrt(v.reduce((s,x)=>s+(x-avg)**2,0)/v.length);
   return { avg, sd, es: Math.max(...v)-Math.min(...v), n: v.length };
 }
-function genBatchId(chambering, bullet, loadType, suffix) {
-  const b = bullet.replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,10);
+function genBatchId(chambering, bullet, loadType, suffix, bulletWeightGr) {
+  const b = bullet.replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
   const ch = (chambering||'UNKN').replace(/\bWinchester\b/gi,'WIN').replace(/\bRemington\b/gi,'REM').replace(/\bMagnum\b/gi,'MAG').replace(/\bCreedmoor\b/gi,'CM').replace(/\bSpringfield\b/gi,'SPRG').replace(/\s+/g,'').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8);
-  const tc = loadType==='Charge Ladder'?'CHG':loadType==='Seating Ladder'?'SEAT':loadType==='Jump Ladder'?'JUMP':loadType==='Grouped'?'GRP':'VAL';
-  return `${ch}-${b}-${tc}${suffix?'-'+suffix:''}`;
+  const tc = loadType==='Charge Ladder'?'CHG':loadType==='Jump Ladder'?'JUMP':loadType==='Grouped'?'GRP':'VAL';
+  const wt = bulletWeightGr!=null ? `${Math.round(bulletWeightGr)}GR-` : '';
+  return `${ch}-${wt}${b}-${tc}${suffix?'-'+suffix:''}`;
 }
 
 // ── Reusable button HTML ──
@@ -1724,7 +1725,8 @@ window.addRifleSeatingBlock = async (prefill) => {
     <div class="form-group" style="margin-top:10px;margin-bottom:0">
       <label>Final COAL (in)</label>
       <input class="form-control rs-coal" id="rs-coal-${idx}" type="number" inputmode="decimal" step="0.001" value="${prefill?.coal??''}" placeholder="Manual override">
-    </div>`;
+    </div>
+    <div id="rs-velo-${idx}"></div>`;
   list.appendChild(div);
   // Run calc on load if prefill
   if (prefill?.cbto_to_lands && prefill?.jump) updateRSCalc(idx);
@@ -1765,7 +1767,41 @@ window.onRSFirearmChange = async (idx) => {
       landsEl.style.borderBottomColor = 'var(--success)';
     }
   }
+
+  // Auto-fill jump for secondary rifles based on first rifle's CBTO
+  const blocks = Array.from(document.querySelectorAll('[id^="rs-block-"]'));
+  const thisPos = blocks.findIndex(b => b.id === `rs-block-${idx}`);
+  if (thisPos > 0) {
+    const firstIdx = blocks[0].id.replace('rs-block-','');
+    const firstCbto = parseFloat(document.getElementById(`rs-cbto-${firstIdx}`)?.value);
+    const jumpEl = document.getElementById(`rs-jump-${idx}`);
+    const landsVal = parseFloat(landsEl?.value);
+    if (jumpEl && !jumpEl.value && !isNaN(firstCbto) && firstCbto > 0 && !isNaN(landsVal)) {
+      jumpEl.value = (landsVal - firstCbto).toFixed(3);
+    }
+  }
+
   updateRSCalc(idx);
+
+  // Show estimated velocity for this firearm
+  const firearms = await dbGetAll('firearms');
+  const fa = firearms.find(f => f.name === firearmName);
+  const veloEl = document.getElementById(`rs-velo-${idx}`);
+  if (!veloEl) return;
+  const rdsVmin = parseFloat(document.getElementById('b-rds-vmin')?.value);
+  const rdsVmax = parseFloat(document.getElementById('b-rds-vmax')?.value);
+  const rdsBL   = parseFloat(document.getElementById('b-rds-bl')?.value);
+  if (!isNaN(rdsVmin) && !isNaN(rdsVmax)) {
+    const faBL = fa?.barrel_length;
+    const diff = (faBL && !isNaN(rdsBL)) ? faBL - rdsBL : null;
+    const adj  = diff !== null ? Math.round(diff * 25) : 0;
+    const vlo  = Math.round(rdsVmin + adj), vhi = Math.round(rdsVmax + adj);
+    const adjTag = diff !== null && diff !== 0
+      ? ` <span style="color:var(--muted2)">(${diff>=0?'+':''}${diff}" · ${adj>=0?'+':''}${adj} fps)</span>` : '';
+    veloEl.innerHTML = `<div style="font-size:11px;font-family:'Share Tech Mono',monospace;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">// EST. VELO <span style="color:var(--accent);font-weight:700">${vlo}–${vhi} fps</span>${adjTag}</div>`;
+  } else {
+    veloEl.innerHTML = '';
+  }
 };
 
 // ── Reusable per-firearm CBTO Jam Length block (used in bullet add/edit forms) ──
@@ -1921,9 +1957,11 @@ window.saveBatch = async () => {
   if (!fields.is_factory&&!fields.powder){toast('POWDER REQUIRED FOR HANDLOADS','error');return;}
   const chargeStr=fields.charge_min?`${fields.charge_min}-${fields.charge_max}`:fields.charge_fixed;
   const facLabel=fields.is_factory?[fields.factory_mfr,fields.factory_product].filter(Boolean).join('-'):'';
+  const bulletInv=await getBulletData(fields.bullet);
+  const bulletWt=bulletInv?.bullet_weight_gr??null;
   let id=fields.is_factory
     ?`FAC-${(facLabel||fields.bullet||'load').replace(/[^a-z0-9]/gi,'-').toUpperCase()}-${Date.now().toString(36).slice(-4)}`
-    :genBatchId(fields.chambering,fields.bullet,fields.load_dev_type,chargeStr);
+    :genBatchId(fields.chambering,fields.bullet,fields.load_dev_type,chargeStr,bulletWt);
   if (await dbGet('batches',id)) id+='-'+Date.now().toString(36);
   const batch={...fields, id, shots:[], created_at:new Date().toISOString()};
   await dbPut('batches',batch); toast('BATCH CREATED','success'); navigate('batch/'+id);
