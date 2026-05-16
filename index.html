@@ -675,9 +675,10 @@ function genBatchId(chambering, bullet, loadType, suffix, bulletWeightGr, powder
   const VOWELS = new Set('AEIOU');
   const seen = new Set(); let pw = '';
   for (const c of pwRaw) {
-    if (seen.has(c)) continue;
-    if (VOWELS.has(c) && pw.length > 0) continue;
-    pw += c; seen.add(c);
+    const isDigit = c >= '0' && c <= '9';
+    if (!isDigit && seen.has(c)) continue;          // deduplicate letters only
+    if (!isDigit && VOWELS.has(c) && pw.length > 0) continue; // strip vowels (not leading)
+    pw += c; if (!isDigit) seen.add(c);
   }
   pw = pw.slice(0, 8);
   return `${bulletPart}-${tc}${suffix?'-'+suffix:''}${pw?'-'+pw:''}`;
@@ -1720,7 +1721,7 @@ window.updateBatchNamePreview = async () => {
   const chMin  = document.getElementById('b-charge-min')?.value  || document.getElementById('b-auto-cmin')?.value  || '';
   const chMax  = document.getElementById('b-charge-max')?.value  || document.getElementById('b-auto-cmax')?.value  || '';
   const chFix  = document.getElementById('b-charge-fixed')?.value|| document.getElementById('b-auto-cfixed')?.value|| '';
-  const chargeStr = chMin ? `${chMin}-${chMax}` : (chFix||'');
+  const chargeStr = chMin ? `${chMin}/${chMax}` : (chFix||'');
   const bulletInv = await getBulletData(bullet);
   const bulletWt  = bulletInv?.bullet_weight_gr ?? null;
   nameEl.value = genBatchId(chambering, bullet, type, chargeStr, bulletWt, powder);
@@ -2041,7 +2042,7 @@ window.saveBatch = async () => {
   const fields=_collectBatchFields(true);
   if (!fields.chambering||!fields.bullet){toast('CHAMBERING & BULLET REQUIRED','error');return;}
   if (!fields.is_factory&&!fields.powder){toast('POWDER REQUIRED FOR HANDLOADS','error');return;}
-  const chargeStr=fields.charge_min?`${fields.charge_min}-${fields.charge_max}`:fields.charge_fixed;
+  const chargeStr=fields.charge_min?`${fields.charge_min}/${fields.charge_max}`:fields.charge_fixed;
   const facLabel=fields.is_factory?[fields.factory_mfr,fields.factory_product].filter(Boolean).join('-'):'';
   const bulletInv=await getBulletData(fields.bullet);
   const bulletWt=bulletInv?.bullet_weight_gr??null;
