@@ -3404,6 +3404,76 @@ function onTgtWheel(e) {
   applyZoom(factor, e.clientX - wr.left, e.clientY - wr.top);
 }
 
+function applyViewport() {
+  const c = document.getElementById('target-canvas');
+  if (c) c.style.transform = `translate(${_tgt.panX}px,${_tgt.panY}px) scale(${_tgt.zoom})`;
+}
+function clampPan() {
+  const wrap = document.getElementById('target-canvas-wrap');
+  const canvas = document.getElementById('target-canvas');
+  if (!wrap || !canvas) return;
+  const visW = canvas.offsetWidth * _tgt.zoom;
+  const visH = canvas.offsetHeight * _tgt.zoom;
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const K = 60;
+  _tgt.panX = Math.min(K, Math.max(ww - visW - K, _tgt.panX));
+  _tgt.panY = Math.min(K, Math.max(wh - visH - K, _tgt.panY));
+}
+function applyZoom(factor, mx, my) {
+  const newZoom = Math.min(12, Math.max(1, _tgt.zoom * factor));
+  const f = newZoom / _tgt.zoom;
+  _tgt.panX = mx * (1 - f) + _tgt.panX * f;
+  _tgt.panY = my * (1 - f) + _tgt.panY * f;
+  _tgt.zoom = newZoom;
+  clampPan();
+  applyViewport();
+}
+function getCenterImagePos() {
+  const wrap = document.getElementById('target-canvas-wrap');
+  if (!wrap || !_tgt.image) return null;
+  const wr = wrap.getBoundingClientRect();
+  const cp = getCanvasPos({ clientX: wr.left + wr.width/2, clientY: wr.top + wr.height/2 });
+  return canvasToImage(cp.x, cp.y);
+}
+function updateAddBtn() {
+  const btn = document.getElementById('tgt-add-btn'); if (!btn) return;
+  const labels = { scale1:'+ SET SCALE P1', scale2:'+ SET SCALE P2', poa:'+ SET POA', impact:'+ ADD IMPACT', select:'EDIT MODE' };
+  btn.textContent = labels[_tgt.mode] || '+ ADD';
+  btn.style.opacity = _tgt.mode === 'select' ? '0.35' : '1';
+  btn.style.pointerEvents = _tgt.mode === 'select' ? 'none' : '';
+}
+function updateReticleColor() {
+  const el = document.getElementById('tgt-reticle'); if (!el) return;
+  const colors = { scale1:'#FFD700', scale2:'#FFD700', poa:'#00e676', impact:'#4fc3f7', select:'#666' };
+  el.style.color = colors[_tgt.mode] || '#4fc3f7';
+}
+window.addTgtMark = () => {
+  const imgPos = getCenterImagePos(); if (!imgPos) return;
+  if (_tgt.mode === 'scale1') {
+    _tgt.scaleP1 = imgPos; _tgt.scaleP2 = null;
+    setTgtMode('scale2');
+    toast('SCALE P1 SET — pan to 2nd mark','success');
+    return;
+  }
+  if (_tgt.mode === 'scale2') {
+    _tgt.scaleP2 = imgPos;
+    computeScale();
+    drawTargetCanvas();
+    return;
+  }
+  if (_tgt.mode === 'poa') {
+    _tgt.poa = imgPos;
+    drawTargetCanvas(); renderTargetStats();
+    setTgtMode('impact');
+    toast('POA SET','success');
+    return;
+  }
+  if (_tgt.mode === 'impact') {
+    _tgt.impacts.push({ x: imgPos.x, y: imgPos.y, num: _tgt.impacts.length + 1 });
+    drawTargetCanvas(); renderTargetStats();
+  }
+};
+
 function computeScale(silent=false) {
   const p1 = _tgt.scaleP1, p2 = _tgt.scaleP2;
   if (!p1 || !p2) return;
@@ -3437,17 +3507,18 @@ window.setImpactSize = size => {
 };
 window.setTgtMode = mode => {
   _tgt.mode = mode;
-  _tgt.dragging = false;
-  _tgt.dragType = null;
-  if (mode !== 'select') { _tgt.selectedIdx = -1; }
+  _tgt.dragging = false; _tgt.dragType = null;
+  if (mode !== 'select') _tgt.selectedIdx = -1;
   ['scale','poa','impact','select'].forEach(m => {
     const b = document.getElementById(`tool-${m}`);
-    if (b) b.className = `target-tool-btn${(mode===m||(mode==='scale2'&&m==='scale'))?'  active':''}`;
+    if (b) b.className = `target-tool-btn${(mode===m||(mode==='scale2'&&m==='scale'))?' active':''}`;
   });
-  const scaleWrap = document.getElementById('tgt-scale-wrap');
-  if (scaleWrap) scaleWrap.style.display = (mode==='scale1'||mode==='scale2') ? '' : 'none';
-  const delWrap = document.getElementById('tgt-delete-wrap');
-  if (delWrap) delWrap.style.display = (mode==='select' && _tgt.selectedIdx>=0) ? '' : 'none';
+  const sw = document.getElementById('tgt-scale-wrap');
+  if (sw) sw.style.display = (mode==='scale1'||mode==='scale2') ? '' : 'none';
+  const dw = document.getElementById('tgt-delete-wrap');
+  if (dw) dw.style.display = (mode==='select'&&_tgt.selectedIdx>=0) ? '' : 'none';
+  updateAddBtn();
+  updateReticleColor();
   updateTgtHint();
   drawTargetCanvas();
 };
@@ -3455,11 +3526,11 @@ window.setTgtMode = mode => {
 function updateTgtHint() {
   const el = document.getElementById('tgt-hint'); if (!el) return;
   const hints = {
-    scale1: '// SCALE TOOL: tap first reference point on image',
-    scale2: '// SCALE TOOL: tap second reference point — then enter known distance',
-    poa:    '// POA: tap the point of aim on the target',
-    impact: '// IMPACT: tap each bullet hole in order',
-    select: '// EDIT: tap impact to select & drag — use DELETE SELECTED to remove — drag POA/scale points too',
+    scale1: '// Pan image so the reticle center sits on your first reference mark, then ADD',
+    scale2: '// Pan to your second reference mark and ADD — then set the known distance above',
+    poa:    '// Pan so the reticle is over your point of aim, then ADD',
+    impact: '// Pan over each bullet hole and tap ADD — repeat for each shot',
+    select: '// Drag existing POA, scale points, or impacts to reposition them',
   };
   el.textContent = hints[_tgt.mode] || '';
 }
