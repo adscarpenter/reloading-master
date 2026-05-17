@@ -355,8 +355,13 @@ textarea.form-control{min-height:80px;resize:vertical;}
 #toast.error{border-color:var(--danger);color:var(--danger);}
 @media print{#bottom-nav,#top-bar .action-btn,.tabs,.btn,.back-btn{display:none !important;}#view{padding:0;}}
 #target-canvas-wrap{position:relative;width:100%;touch-action:none;
-  background:#1a1a1a;overflow:hidden;border:1px solid var(--border);}
-#target-canvas{display:block;width:100%;height:auto;cursor:crosshair;}
+  background:#1a1a1a;overflow:hidden;border:1px solid var(--border);
+  min-height:240px;max-height:62vh;cursor:grab;user-select:none;}
+#target-canvas-wrap.is-panning{cursor:grabbing;}
+#target-canvas{display:block;transform-origin:0 0;will-change:transform;}
+#tgt-reticle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  pointer-events:none;z-index:10;width:80px;height:80px;}
+#tgt-reticle svg{width:80px;height:80px;}
 .target-toolbar{display:flex;gap:6px;flex-wrap:wrap;padding:10px 0;margin-bottom:10px;}
 .target-tool-btn{flex:1;min-width:60px;padding:10px 8px;font-size:11px;font-weight:700;
   letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
@@ -3060,9 +3065,13 @@ let _tgt = {
   image: null, imageData: null, scale: null, poa: null, impacts: [],
   distYds: 100, distUnit: 'yds', batchId: '', sessionName: '',
   rangeDate: new Date().toISOString().slice(0,10),
-  mode: 'impact', impactSize: 'md', dragType: null,
+  mode: 'scale1', impactSize: 'md', dragType: null,
   scaleP1: null, scaleP2: null, selectedIdx: -1,
   dragging: false, dragOffsetX: 0, dragOffsetY: 0,
+  panX: 0, panY: 0, zoom: 1,
+  activePointers: {}, lastPinchDist: null,
+  lastPinchMidX: null, lastPinchMidY: null,
+  isPanning: false, panStart: null,
 };
 
 register('target', async () => {
@@ -3122,64 +3131,60 @@ register('target', async () => {
 
     <!-- Canvas area -->
     ${_tgt.imageData ? `
-    <!-- Toolbar -->
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
-      <span style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif">MARKER</span>
-      <button class="target-tool-btn${_tgt.impactSize==='sm'?' active':''}" id="tgt-sz-sm" onclick="setImpactSize('sm')" style="flex:0 0 52px">SM</button>
-      <button class="target-tool-btn${_tgt.impactSize==='md'?' active':''}" id="tgt-sz-md" onclick="setImpactSize('md')" style="flex:0 0 52px">MD</button>
-      <button class="target-tool-btn${_tgt.impactSize==='lg'?' active':''}" id="tgt-sz-lg" onclick="setImpactSize('lg')" style="flex:0 0 52px">LG</button>
-    </div>
-    <div class="target-toolbar">
-      <button class="target-tool-btn ${_tgt.mode==='scale1'||_tgt.mode==='scale2'?'active':''}" onclick="setTgtMode('scale1')" id="tool-scale">
-        SCALE
-      </button>
-      <button class="target-tool-btn ${_tgt.mode==='poa'?'active':''}" onclick="setTgtMode('poa')" id="tool-poa">
-        POA
-      </button>
-      <button class="target-tool-btn ${_tgt.mode==='impact'?'active':''}" onclick="setTgtMode('impact')" id="tool-impact">
-        IMPACT
-      </button>
-      <button class="target-tool-btn ${_tgt.mode==='select'?'active':''}" onclick="setTgtMode('select')" id="tool-select">
-        EDIT
-      </button>
-      <button class="target-tool-btn" onclick="undoLastImpact()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">
-        UNDO
-      </button>
-      <button class="target-tool-btn" onclick="clearTargetSession()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">
-        CLEAR
-      </button>
+    <!-- Two-row toolbar -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+      <button class="target-tool-btn${_tgt.mode==='scale1'||_tgt.mode==='scale2'?' active':''}" id="tool-scale" onclick="setTgtMode('scale1')">SCALE</button>
+      <button class="target-tool-btn${_tgt.mode==='poa'?' active':''}" id="tool-poa" onclick="setTgtMode('poa')">POA</button>
+      <button class="target-tool-btn${_tgt.mode==='impact'?' active':''}" id="tool-impact" onclick="setTgtMode('impact')">IMPACT</button>
+      <button class="target-tool-btn${_tgt.mode==='select'?' active':''}" id="tool-select" onclick="setTgtMode('select')">EDIT</button>
+      <span style="flex:1"></span>
+      <button class="target-tool-btn" onclick="undoLastImpact()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">UNDO</button>
+      <button class="target-tool-btn" onclick="clearTargetSession()" style="color:var(--danger);border-color:rgba(255,107,66,.3)">CLEAR</button>
     </div>
 
-    <!-- Mode hint -->
-    <div class="tgt-mode-hint" id="tgt-hint"></div>
-
-    <!-- Scale input (shown during scale mode) -->
-    <div id="tgt-scale-wrap" style="display:none;margin-bottom:10px">
+    <!-- Scale distance input (shown in scale modes) -->
+    <div id="tgt-scale-wrap" style="display:${_tgt.mode==='scale1'||_tgt.mode==='scale2'?'':'none'};margin-bottom:8px">
       <div class="form-row">
-        <div class="form-group" style="margin-bottom:0">
-          <label>Known Distance</label>
-          <input class="form-control" id="tgt-scale-dist" type="number" inputmode="decimal" step="0.01" value="1.0" placeholder="e.g. 1.0">
-        </div>
-        <div class="form-group" style="margin-bottom:0">
-          <label>Unit</label>
+        <div class="form-group" style="margin-bottom:0"><label>Known Distance</label>
+          <input class="form-control" id="tgt-scale-dist" type="number" inputmode="decimal" step="0.01" value="1.0" placeholder="e.g. 1.0"></div>
+        <div class="form-group" style="margin-bottom:0"><label>Unit</label>
           <select class="form-control" id="tgt-scale-unit">
-            <option value="in">Inches</option>
-            <option value="cm">Centimeters</option>
-            <option value="mm">Millimeters</option>
-          </select>
-        </div>
+            <option value="in">Inches</option><option value="cm">Centimeters</option><option value="mm">Millimeters</option>
+          </select></div>
       </div>
-      <div id="tgt-scale-status" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2);margin-top:6px"></div>
+      <div id="tgt-scale-status" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2);margin-top:4px"></div>
     </div>
 
-    <!-- Delete selected impact -->
-    <div id="tgt-delete-wrap" style="display:none;margin-bottom:10px">
-      ${mkBtnSm('DELETE SELECTED','btn-danger','deleteSelectedImpact()','trash')}
-    </div>
+    <!-- Hint line -->
+    <div class="tgt-mode-hint" id="tgt-hint" style="margin-bottom:8px"></div>
 
-    <!-- Canvas -->
+    <!-- Canvas with fixed reticle overlay -->
     <div id="target-canvas-wrap">
       <canvas id="target-canvas"></canvas>
+      <div id="tgt-reticle">
+        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="40" cy="40" r="18" stroke="currentColor" stroke-width="1.5" opacity="0.9"/>
+          <line x1="40" y1="2" x2="40" y2="20" stroke="currentColor" stroke-width="1.5" opacity="0.9"/>
+          <line x1="40" y1="60" x2="40" y2="78" stroke="currentColor" stroke-width="1.5" opacity="0.9"/>
+          <line x1="2" y1="40" x2="20" y2="40" stroke="currentColor" stroke-width="1.5" opacity="0.9"/>
+          <line x1="60" y1="40" x2="78" y2="40" stroke="currentColor" stroke-width="1.5" opacity="0.9"/>
+          <circle cx="40" cy="40" r="1.5" fill="currentColor" opacity="0.9"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ADD button + delete selected -->
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:stretch">
+      <button id="tgt-add-btn" onclick="addTgtMark()"
+        style="flex:1;padding:16px;font-size:15px;font-weight:700;letter-spacing:2px;
+               background:var(--accent);color:#fff;border:none;cursor:pointer;
+               font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+               touch-action:manipulation;box-shadow:2px 2px 0 rgba(29,42,53,.2)">
+        + ADD
+      </button>
+      <div id="tgt-delete-wrap" style="display:none">
+        ${mkBtnSm('DEL','btn-danger','deleteSelectedImpact()','trash')}
+      </div>
     </div>
 
     <!-- Scale indicator -->
@@ -3222,24 +3227,32 @@ function initTargetCanvas() {
   const wrap   = document.getElementById('target-canvas-wrap');
   if (!canvas || !wrap) return;
 
+  if (_tgt.zoom === 1 && _tgt.panX === 0) {
+    _tgt.panX = 0; _tgt.panY = 0;
+  }
+
   const img = new Image();
   img.onload = () => {
     _tgt.image = img;
     const maxW = wrap.clientWidth || 360;
-    const ratio = img.height / img.width;
     canvas.width  = maxW;
-    canvas.height = Math.round(maxW * ratio);
+    canvas.height = Math.round(maxW * img.height / img.width);
+    _tgt.panX = 0; _tgt.panY = 0; _tgt.zoom = 1;
+    applyViewport();
     drawTargetCanvas();
     renderTargetStats();
     updateScaleIndicator();
+    updateAddBtn();
+    updateReticleColor();
   };
   img.src = _tgt.imageData;
 
-  // ── Pointer events for canvas ──
-  canvas.addEventListener('pointerdown', onTgtPointerDown);
-  canvas.addEventListener('pointermove', onTgtPointerMove);
-  canvas.addEventListener('pointerup',   onTgtPointerUp);
-  canvas.addEventListener('pointercancel', () => { _tgt.dragging = false; });
+  // Events on the wrap (not canvas) so pan continues outside canvas bounds
+  wrap.addEventListener('pointerdown',  onTgtPointerDown);
+  wrap.addEventListener('pointermove',  onTgtPointerMove);
+  wrap.addEventListener('pointerup',    onTgtPointerUp);
+  wrap.addEventListener('pointercancel',onTgtPointerUp);
+  wrap.addEventListener('wheel', onTgtWheel, { passive: false });
 }
 
 function canvasToImage(cx, cy) {
@@ -3282,86 +3295,113 @@ function hitTestImpact(cx, cy) {
 
 function onTgtPointerDown(e) {
   e.preventDefault();
-  const {x, y} = getCanvasPos(e);
-  const imgPos  = canvasToImage(x, y);
+  e.currentTarget.setPointerCapture(e.pointerId);
+  _tgt.activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
 
+  const numPtrs = Object.keys(_tgt.activePointers).length;
+  if (numPtrs >= 2) {
+    const pts = Object.values(_tgt.activePointers);
+    const dx = pts[0].x - pts[1].x, dy = pts[0].y - pts[1].y;
+    _tgt.lastPinchDist = Math.sqrt(dx*dx + dy*dy);
+    _tgt.lastPinchMidX = (pts[0].x + pts[1].x) / 2;
+    _tgt.lastPinchMidY = (pts[0].y + pts[1].y) / 2;
+    _tgt.isPanning = false; _tgt.dragging = false;
+    return;
+  }
+
+  // EDIT mode: hit-test existing markers first
   if (_tgt.mode === 'select') {
-    const HIT_POA=22, HIT_SCALE=18;
+    const {x, y} = getCanvasPos(e);
+    const HIT_POA = 22, HIT_SCALE = 18;
     if (_tgt.poa) {
-      const c=imageToCanvas(_tgt.poa.x,_tgt.poa.y),dx=x-c.x,dy=y-c.y;
-      if (Math.sqrt(dx*dx+dy*dy)<HIT_POA){_tgt.dragging=true;_tgt.dragType='poa';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
+      const c = imageToCanvas(_tgt.poa.x, _tgt.poa.y), dx = x-c.x, dy = y-c.y;
+      if (Math.sqrt(dx*dx+dy*dy) < HIT_POA) { _tgt.dragging=true; _tgt.dragType='poa'; _tgt.dragOffsetX=dx; _tgt.dragOffsetY=dy; return; }
     }
     if (_tgt.scaleP2) {
-      const c=imageToCanvas(_tgt.scaleP2.x,_tgt.scaleP2.y),dx=x-c.x,dy=y-c.y;
-      if (Math.sqrt(dx*dx+dy*dy)<HIT_SCALE){_tgt.dragging=true;_tgt.dragType='scale2';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
+      const c = imageToCanvas(_tgt.scaleP2.x, _tgt.scaleP2.y), dx = x-c.x, dy = y-c.y;
+      if (Math.sqrt(dx*dx+dy*dy) < HIT_SCALE) { _tgt.dragging=true; _tgt.dragType='scale2'; _tgt.dragOffsetX=dx; _tgt.dragOffsetY=dy; return; }
     }
     if (_tgt.scaleP1) {
-      const c=imageToCanvas(_tgt.scaleP1.x,_tgt.scaleP1.y),dx=x-c.x,dy=y-c.y;
-      if (Math.sqrt(dx*dx+dy*dy)<HIT_SCALE){_tgt.dragging=true;_tgt.dragType='scale1';_tgt.dragOffsetX=dx;_tgt.dragOffsetY=dy;drawTargetCanvas();return;}
+      const c = imageToCanvas(_tgt.scaleP1.x, _tgt.scaleP1.y), dx = x-c.x, dy = y-c.y;
+      if (Math.sqrt(dx*dx+dy*dy) < HIT_SCALE) { _tgt.dragging=true; _tgt.dragType='scale1'; _tgt.dragOffsetX=dx; _tgt.dragOffsetY=dy; return; }
     }
-    const idx=hitTestImpact(x,y);
-    if (idx>=0){
-      _tgt.selectedIdx=idx;_tgt.dragging=true;_tgt.dragType='impact';
-      const c=imageToCanvas(_tgt.impacts[idx].x,_tgt.impacts[idx].y);
-      _tgt.dragOffsetX=x-c.x;_tgt.dragOffsetY=y-c.y;
-      document.getElementById('tgt-delete-wrap').style.display='';
-    } else {
-      _tgt.selectedIdx=-1;_tgt.dragging=false;_tgt.dragType=null;
-      document.getElementById('tgt-delete-wrap').style.display='none';
+    const idx = hitTestImpact(x, y);
+    if (idx >= 0) {
+      _tgt.selectedIdx = idx; _tgt.dragging = true; _tgt.dragType = 'impact';
+      const c = imageToCanvas(_tgt.impacts[idx].x, _tgt.impacts[idx].y);
+      _tgt.dragOffsetX = x-c.x; _tgt.dragOffsetY = y-c.y;
+      const dw = document.getElementById('tgt-delete-wrap');
+      if (dw) dw.style.display = '';
+      drawTargetCanvas(); return;
     }
+    _tgt.selectedIdx = -1;
+    const dw = document.getElementById('tgt-delete-wrap');
+    if (dw) dw.style.display = 'none';
     drawTargetCanvas();
-    return;
   }
 
-  if (_tgt.mode === 'poa') {
-    _tgt.poa = imgPos;
-    drawTargetCanvas();
-    renderTargetStats();
-    setTgtMode('impact');
-    toast('POA SET — TAP IMPACTS','success');
-    return;
-  }
-
-  if (_tgt.mode === 'scale1') {
-    _tgt.scaleP1 = imgPos;
-    _tgt.scaleP2 = null;
-    _tgt.mode = 'scale2';
-    updateTgtHint();
-    drawTargetCanvas();
-    return;
-  }
-
-  if (_tgt.mode === 'scale2') {
-    _tgt.scaleP2 = imgPos;
-    computeScale();
-    drawTargetCanvas();
-    return;
-  }
-
-  if (_tgt.mode === 'impact') {
-    _tgt.impacts.push({ x: imgPos.x, y: imgPos.y, num: _tgt.impacts.length + 1 });
-    drawTargetCanvas();
-    renderTargetStats();
-    return;
-  }
+  // Pan
+  _tgt.isPanning = true;
+  _tgt.panStart = { x: e.clientX - _tgt.panX, y: e.clientY - _tgt.panY };
+  e.currentTarget.classList.add('is-panning');
 }
 
 function onTgtPointerMove(e) {
-  if (!_tgt.dragging) return;
   e.preventDefault();
-  const {x,y}=getCanvasPos(e);
-  const imgPos=canvasToImage(x-_tgt.dragOffsetX,y-_tgt.dragOffsetY);
-  if (_tgt.dragType==='poa'){_tgt.poa=imgPos;drawTargetCanvas();renderTargetStats();return;}
-  if (_tgt.dragType==='scale1'){_tgt.scaleP1=imgPos;if(_tgt.scaleP2)computeScale(true);drawTargetCanvas();return;}
-  if (_tgt.dragType==='scale2'){_tgt.scaleP2=imgPos;if(_tgt.scaleP1)computeScale(true);drawTargetCanvas();return;}
-  if (_tgt.selectedIdx<0) return;
-  _tgt.impacts[_tgt.selectedIdx].x=imgPos.x;_tgt.impacts[_tgt.selectedIdx].y=imgPos.y;
-  drawTargetCanvas();renderTargetStats();
+  _tgt.activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  const ptrs = Object.values(_tgt.activePointers);
+
+  // Pinch zoom
+  if (ptrs.length >= 2) {
+    const dx = ptrs[0].x - ptrs[1].x, dy = ptrs[0].y - ptrs[1].y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (_tgt.lastPinchDist) {
+      const wrap = document.getElementById('target-canvas-wrap');
+      const wr = wrap.getBoundingClientRect();
+      const mx = (ptrs[0].x + ptrs[1].x)/2 - wr.left;
+      const my = (ptrs[0].y + ptrs[1].y)/2 - wr.top;
+      applyZoom(dist / _tgt.lastPinchDist, mx, my);
+    }
+    _tgt.lastPinchDist = dist;
+    return;
+  }
+
+  // Drag existing marker (EDIT mode)
+  if (_tgt.dragging && _tgt.mode === 'select') {
+    const {x, y} = getCanvasPos(e);
+    const imgPos = canvasToImage(x - _tgt.dragOffsetX, y - _tgt.dragOffsetY);
+    if (_tgt.dragType === 'poa') { _tgt.poa = imgPos; drawTargetCanvas(); renderTargetStats(); return; }
+    if (_tgt.dragType === 'scale1') { _tgt.scaleP1 = imgPos; if (_tgt.scaleP2) computeScale(true); drawTargetCanvas(); return; }
+    if (_tgt.dragType === 'scale2') { _tgt.scaleP2 = imgPos; if (_tgt.scaleP1) computeScale(true); drawTargetCanvas(); return; }
+    if (_tgt.selectedIdx >= 0) { _tgt.impacts[_tgt.selectedIdx] = {..._tgt.impacts[_tgt.selectedIdx], x: imgPos.x, y: imgPos.y}; drawTargetCanvas(); renderTargetStats(); return; }
+    return;
+  }
+
+  // Pan
+  if (_tgt.isPanning) {
+    _tgt.panX = e.clientX - _tgt.panStart.x;
+    _tgt.panY = e.clientY - _tgt.panStart.y;
+    clampPan();
+    applyViewport();
+  }
 }
 
 function onTgtPointerUp(e) {
-  _tgt.dragging = false;
-  _tgt.dragType = null;
+  delete _tgt.activePointers[e.pointerId];
+  _tgt.lastPinchDist = null;
+  if (Object.keys(_tgt.activePointers).length === 0) {
+    _tgt.isPanning = false; _tgt.dragging = false; _tgt.dragType = null;
+    const wrap = document.getElementById('target-canvas-wrap');
+    if (wrap) wrap.classList.remove('is-panning');
+  }
+}
+
+function onTgtWheel(e) {
+  e.preventDefault();
+  const wrap = document.getElementById('target-canvas-wrap');
+  const wr = wrap.getBoundingClientRect();
+  const factor = e.deltaY < 0 ? 1.12 : 1/1.12;
+  applyZoom(factor, e.clientX - wr.left, e.clientY - wr.top);
 }
 
 function computeScale(silent=false) {
