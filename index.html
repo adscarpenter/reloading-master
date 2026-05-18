@@ -405,6 +405,20 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .tgt-mode-hint{font-size:11px;font-family:'Share Tech Mono',monospace;
   color:var(--accent);padding:8px 12px;background:rgba(44,95,136,.08);
   border:1px solid rgba(44,95,136,.2);margin-bottom:10px;letter-spacing:.5px;}
+.tgt-sess-list{margin-top:14px;}
+.tgt-sess-filter{display:flex;gap:6px;margin-bottom:10px;}
+.tgt-sess-filter-btn{padding:5px 12px;font-size:10px;font-weight:700;letter-spacing:1.5px;
+  text-transform:uppercase;cursor:pointer;background:var(--surface2);color:var(--muted2);
+  border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;touch-action:manipulation;}
+.tgt-sess-filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.tgt-sess-row{display:flex;align-items:center;gap:10px;padding:10px 12px;
+  border:1px solid var(--border);margin-bottom:6px;cursor:pointer;
+  background:var(--surface2);touch-action:manipulation;}
+.tgt-sess-row:active{background:var(--surface);}
+.tgt-sess-main{flex:1;min-width:0;}
+.tgt-sess-date{font-size:12px;font-weight:700;color:var(--ink);font-family:'Share Tech Mono',monospace;}
+.tgt-sess-fa{font-size:11px;color:var(--muted2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tgt-sess-del{flex:0 0 auto;padding:8px;color:var(--danger);cursor:pointer;font-size:16px;touch-action:manipulation;}
 </style>
 </head>
 <body>
@@ -585,14 +599,14 @@ function drawRifleOnCanvas(canvas, w, h) {
 // ════════════════════════════════════════════════════
 //  DATABASE
 // ════════════════════════════════════════════════════
-const DB_NAME = 'ReloadingMasterV3', DB_VER = 1;
+const DB_NAME = 'ReloadingMasterV3', DB_VER = 2;
 let db;
 function openDB() {
   return new Promise((res, rej) => {
     const req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      ['firearms','components','batches'].forEach(s => {
+      ['firearms','components','batches','target_sessions'].forEach(s => {
         if (!d.objectStoreNames.contains(s))
           d.createObjectStore(s, s === 'batches' ? { keyPath: 'id' } : { keyPath: 'id', autoIncrement: true });
       });
@@ -3191,6 +3205,7 @@ let _tgt = {
   image: null, imageData: null, scale: null, poa: null, impacts: [],
   distYds: 100, distUnit: 'yds', batchId: '', sessionName: '',
   rangeDate: new Date().toISOString().slice(0,10),
+  rangeTime: '', firearmdId: '', savedId: null,
   mode: 'scale1', impactSize: 'md', dragType: null,
   scaleP1: null, scaleP2: null, selectedIdx: -1,
   dragging: false, dragOffsetX: 0, dragOffsetY: 0,
@@ -3201,10 +3216,11 @@ let _tgt = {
 };
 
 register('target', async () => {
-  setTitle('TARGET', false, `<button class="action-btn" onclick="exportTargetSession()">${ICONS.export} EXPORT</button>`);
+  setTitle('TARGET', false, `<button class="action-btn" onclick="saveTargetSession()" style="margin-right:6px">${ICONS.save} SAVE</button><button class="action-btn" onclick="exportTargetSession()">${ICONS.export} EXPORT</button>`);
   const batches = await dbGetAll('batches');
   const batchOpts = batches.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
     .map(b=>`<option value="${b.id}" ${b.id===_tgt.batchId?'selected':''}>${b.id}</option>`).join('');
+  const tgtFirearms = await dbGetAll('firearms');
 
   render(`
     <!-- Session inputs -->
@@ -3226,6 +3242,18 @@ register('target', async () => {
           <div class="form-group" style="margin-bottom:0">
             <label>Range Date</label>
             <input class="form-control" id="tgt-date" type="date" value="${_tgt.rangeDate}" oninput="_tgt.rangeDate=this.value">
+          </div>
+        </div>
+        <div class="form-row" style="margin-top:10px">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Firearm</label>
+            <select class="form-control" id="tgt-firearm" onchange="_tgt.firearmdId=this.value">
+              <option value="">— None —</option>${tgtFirearms.map(f=>`<option value="${f.name}" ${f.name===_tgt.firearmdId?'selected':''}>${f.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Range Time</label>
+            <input class="form-control" id="tgt-time" type="time" value="${_tgt.rangeTime}" oninput="_tgt.rangeTime=this.value">
           </div>
         </div>
         <div class="form-row" style="margin-top:12px">
@@ -3319,7 +3347,12 @@ register('target', async () => {
     <!-- Stats -->
     <div id="tgt-stats-wrap" style="margin-top:14px"></div>
     ` : ''}
+
+    <!-- Saved Sessions -->
+    <div class="tgt-sess-list" id="tgt-sess-list"></div>
   `);
+
+  renderTargetSessionsList();
 
   if (_tgt.imageData) {
     initTargetCanvas();
@@ -3942,6 +3975,119 @@ window.exportTargetSession = async () => {
   URL.revokeObjectURL(url);
   toast('TARGET SESSION EXPORTED','success');
 };
+
+let _tgtSessFilter = 'all';
+
+window.saveTargetSession = async () => {
+  if (!_tgt.imageData) { toast('LOAD AN IMAGE FIRST','error'); return; }
+  const stats = calcTargetStats();
+  const record = {
+    batch_id: _tgt.batchId || null,
+    firearm_id: _tgt.firearmdId || null,
+    session_name: _tgt.sessionName || null,
+    range_date: _tgt.rangeDate,
+    range_time: _tgt.rangeTime || '',
+    distance: _tgt.distYds,
+    distance_unit: _tgt.distUnit,
+    scale_px_per_in: _tgt.scale || null,
+    poa: _tgt.poa,
+    scaleP1: _tgt.scaleP1,
+    scaleP2: _tgt.scaleP2,
+    impacts: _tgt.impacts,
+    image_data: _tgt.imageData,
+    created_at: new Date().toISOString(),
+    stats_group_moa: stats ? +stats.groupMOA.toFixed(2) : null,
+    stats_mean_rad_moa: stats ? +stats.meanRadMOA.toFixed(2) : null,
+    stats_shot_count: _tgt.impacts.length,
+  };
+  if (_tgt.savedId) {
+    record.id = _tgt.savedId;
+    await dbPut('target_sessions', record);
+  } else {
+    const newId = await new Promise((r,j)=>{ const q=db.transaction('target_sessions','readwrite').objectStore('target_sessions').add(record); q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
+    _tgt.savedId = newId;
+  }
+  toast('SESSION SAVED','success');
+  renderTargetSessionsList();
+};
+
+window.loadTargetSession = async id => {
+  const s = await dbGet('target_sessions', id);
+  if (!s) return;
+  _tgt.imageData = s.image_data;
+  _tgt.image = null;
+  _tgt.scale = s.scale_px_per_in;
+  _tgt.poa = s.poa;
+  _tgt.scaleP1 = s.scaleP1;
+  _tgt.scaleP2 = s.scaleP2;
+  _tgt.impacts = s.impacts || [];
+  _tgt.batchId = s.batch_id || '';
+  _tgt.sessionName = s.session_name || '';
+  _tgt.rangeDate = s.range_date || new Date().toISOString().slice(0,10);
+  _tgt.rangeTime = s.range_time || '';
+  _tgt.firearmdId = s.firearm_id || '';
+  _tgt.distYds = s.distance || 100;
+  _tgt.distUnit = s.distance_unit || 'yds';
+  _tgt.savedId = s.id;
+  _tgt.mode = 'impact'; _tgt.panX = 0; _tgt.panY = 0; _tgt.zoom = 1;
+  navigate('target');
+};
+
+window.deleteTargetSession = async (id, e) => {
+  e.stopPropagation();
+  if (!confirm_('Delete this saved session?')) return;
+  await dbDelete('target_sessions', id);
+  if (_tgt.savedId === id) _tgt.savedId = null;
+  renderTargetSessionsList();
+};
+
+window.setTgtSessFilter = filter => {
+  _tgtSessFilter = filter;
+  renderTargetSessionsList();
+};
+
+async function renderTargetSessionsList() {
+  const el = document.getElementById('tgt-sess-list'); if (!el) return;
+  let sessions = await dbGetAll('target_sessions');
+  // Sort: range_date DESC, range_time DESC, created_at DESC
+  sessions.sort((a,b)=>{
+    const da=a.range_date||'', db2=b.range_date||'';
+    if (da!==db2) return da>db2?-1:1;
+    const ta=a.range_time||'', tb=b.range_time||'';
+    if (ta!==tb) return ta>tb?-1:1;
+    return (b.created_at||'')>(a.created_at||'')?1:-1;
+  });
+
+  const hasBatchFilter = !!_tgt.batchId;
+  const filtered = _tgtSessFilter==='batch' && hasBatchFilter
+    ? sessions.filter(s=>s.batch_id===_tgt.batchId)
+    : sessions;
+
+  const filterHtml = `<div class="tgt-sess-filter">
+    <button class="tgt-sess-filter-btn${_tgtSessFilter==='all'?' active':''}" onclick="setTgtSessFilter('all')">ALL</button>
+    ${hasBatchFilter?`<button class="tgt-sess-filter-btn${_tgtSessFilter==='batch'?' active':''}" onclick="setTgtSessFilter('batch')">BATCH: ${_tgt.batchId}</button>`:''}
+  </div>`;
+
+  if (!sessions.length) {
+    el.innerHTML = `<div class="section-title" style="margin-bottom:8px">SAVED SESSIONS</div><p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// NO SAVED SESSIONS</p>`;
+    return;
+  }
+
+  const rows = filtered.map(s => {
+    const dateStr = [s.range_date, s.range_time].filter(Boolean).join(' · ');
+    const faStr = s.firearm_id || (s.batch_id ? `Batch: ${s.batch_id}` : '—');
+    const isCur = s.id === _tgt.savedId;
+    return `<div class="tgt-sess-row${isCur?' active':''}" onclick="loadTargetSession(${s.id})" style="${isCur?'border-color:var(--accent)':''}">
+      <div class="tgt-sess-main">
+        <div class="tgt-sess-date">${dateStr||'—'}</div>
+        <div class="tgt-sess-fa">${faStr}</div>
+      </div>
+      <div class="tgt-sess-del" onclick="deleteTargetSession(${s.id},event)" title="Delete">✕</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="section-title" style="margin-bottom:8px">SAVED SESSIONS</div>${filterHtml}${rows||'<p style="font-size:12px;font-family:\'Share Tech Mono\',monospace;color:var(--muted2)">// NO SESSIONS MATCH FILTER</p>'}`;
+}
 
 register('404',()=>{
   setTitle('404',true);
