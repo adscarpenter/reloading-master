@@ -2304,36 +2304,64 @@ window.checkAllLoaded = async batchId => {
   await dbPut('batches',batch); renderLoadTable(batch); toast('ALL MARKED LOADED','success');
 };
 
+function allBatchShots(batch) {
+  const all = [];
+  migrateToRangeSessions(batch).forEach(s =>
+    (s.shots||[]).forEach(sh => { if (sh?.velocity>0) all.push(sh); }));
+  return all;
+}
+
 function renderChronoTab(batch) {
   const el=document.getElementById('tab-chrono'); if (!el) return;
-  const shots=batch.shots||[], validShots=shots.filter(s=>s.velocity>0);
-  const stats=validShots.length?calcStats(validShots.map(s=>s.velocity)):null;
-  el.innerHTML=validShots.length?`
-    <div class="stat-grid" style="margin-bottom:14px">
-      <div class="stat-box hi"><div class="s-label">AVG</div><div class="s-val">${Math.round(stats.avg)}</div><div class="s-unit">FPS</div></div>
-      <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" style="color:var(--success)">${fmt(stats.sd,1)}</div><div class="s-unit">FPS</div></div>
-      <div class="stat-box"><div class="s-label">ES</div><div class="s-val">${fmt(stats.es,1)}</div><div class="s-unit">FPS</div></div>
-    </div>
-    <div class="card"><div class="card-header"><div class="marker"></div><h3>Shot Data</h3>${mkBtnSm('CLEAR','btn-secondary',`clearShots('${batch.id}')`, 'trash')}</div>
+  const sessions=sortSessions(migrateToRangeSessions(batch));
+  const allValid=allBatchShots(batch);
+  const stats=allValid.length?calcStats(allValid.map(s=>s.velocity)):null;
+
+  if (!allValid.length) {
+    el.innerHTML=`<p class="text-muted" style="font-size:14px;margin-bottom:16px;font-family:'Share Tech Mono',monospace">// NO VELOCITY DATA — USE RANGE CARD TO RECORD SHOTS</p>`;
+    el.innerHTML+=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>
+      ${batch.range_date?`<p class="text-muted" style="font-size:12px;margin-top:10px;font-family:'Share Tech Mono',monospace">// RANGE DATE: ${fmtDate(batch.range_date)}</p>`:''}`;
+    return;
+  }
+
+  let html=`<div class="stat-grid" style="margin-bottom:14px">
+    <div class="stat-box hi"><div class="s-label">AVG</div><div class="s-val">${Math.round(stats.avg)}</div><div class="s-unit">FPS</div></div>
+    <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" style="color:var(--success)">${fmt(stats.sd,1)}</div><div class="s-unit">FPS</div></div>
+    <div class="stat-box"><div class="s-label">ES</div><div class="s-val">${fmt(stats.es,1)}</div><div class="s-unit">FPS</div></div>
+  </div>`;
+
+  sessions.forEach((sess,si)=>{
+    const sessRows=[];
+    (sess.shots||[]).forEach((sh,idx)=>{ if (sh?.velocity>0) sessRows.push({num:idx+1,velocity:sh.velocity,field_notes:sh.field_notes||''}); });
+    if (!sessRows.length) return;
+    const ss=calcStats(sessRows.map(s=>s.velocity));
+    const label=sess.range_date?fmtDate(sess.range_date):`Session ${si+1}`;
+    const fa=sess.firearm_id&&sess.firearm_id!=='__manual__'?` · ${sess.range_firearm_label||sess.firearm_id}`:sess.range_firearm_label?` · ${sess.range_firearm_label}`:'';
+    html+=`<div class="card" style="margin-bottom:10px">
+      <div class="card-header"><div class="marker"></div><h3>${label}${fa}</h3>${si===0?mkBtnSm('CLEAR','btn-secondary',`clearShots('${batch.id}')`, 'trash'):''}</div>
+      ${sessions.filter(s=>(s.shots||[]).some(sh=>sh?.velocity>0)).length>1?`<div style="padding:6px 14px;border-bottom:1px solid var(--border);font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">AVG <strong style="color:var(--ink)">${Math.round(ss.avg)}</strong> · SD <strong style="color:var(--success)">${fmt(ss.sd,1)}</strong> · ES <strong style="color:var(--ink)">${fmt(ss.es,1)}</strong> FPS</div>`:''}
       <div style="padding:0 0 4px"><table class="shot-table">
         <thead><tr><th>#</th><th>FPS</th><th>Δ AVG</th><th>Notes</th></tr></thead>
-        <tbody>${shots.map((s,i)=>{if(!s.velocity)return''; const d=stats?s.velocity-stats.avg:0; return `<tr><td>${i+1}</td><td style="font-weight:700;color:var(--text)">${Math.round(s.velocity)}</td><td class="${d>=0?'delta-pos':'delta-neg'}">${d>=0?'+':''}${fmt(d,1)}</td><td style="font-size:12px;color:var(--muted2)">${s.field_notes||''}</td></tr>`; }).join('')}</tbody>
+        <tbody>${sessRows.map(s=>{ const d=ss?s.velocity-ss.avg:0; return `<tr><td>${s.num}</td><td style="font-weight:700;color:var(--text)">${Math.round(s.velocity)}</td><td class="${d>=0?'delta-pos':'delta-neg'}">${d>=0?'+':''}${fmt(d,1)}</td><td style="font-size:12px;color:var(--muted2)">${s.field_notes||''}</td></tr>`; }).join('')}</tbody>
       </table></div>
-    </div>` :
-    `<p class="text-muted" style="font-size:14px;margin-bottom:16px;font-family:'Share Tech Mono',monospace">// NO VELOCITY DATA — USE RANGE CARD TO RECORD SHOTS</p>`;
+    </div>`;
+  });
+
+  el.innerHTML=html;
   el.innerHTML+=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>
     ${batch.range_date?`<p class="text-muted" style="font-size:12px;margin-top:10px;font-family:'Share Tech Mono',monospace">// RANGE DATE: ${fmtDate(batch.range_date)}</p>`:''}`;
 }
 window.clearShots = async batchId => {
   if (!confirm_('Clear all shot data?')) return;
   const batch=await dbGet('batches',batchId);
-  batch.shots=[]; batch.range_date=null;
+  batch.shots=[]; batch.range_sessions=[]; batch.range_date=null;
   await dbPut('batches',batch); renderChronoTab(batch); toast('SHOTS CLEARED');
 };
 
 async function renderDropTab(batch) {
   const el=document.getElementById('tab-drop'); if (!el) return;
-  const stats=batch.shots?.length?calcStats(batch.shots.filter(s=>s.velocity>0).map(s=>s.velocity)):null;
+  const _allShots=allBatchShots(batch);
+  const stats=_allShots.length?calcStats(_allShots.map(s=>s.velocity)):null;
   const inv=await getBulletData(batch.bullet);
 
   // BC priority: batch stored > inventory G1 > inventory G7
@@ -2430,7 +2458,8 @@ window.setBCType = (type) => {
 };
 window.recomputeDrop = async batchId => {
   const batch=await dbGet('batches',batchId), inv=await getBulletData(batch.bullet);
-  const stats=batch.shots?.length?calcStats(batch.shots.filter(s=>s.velocity>0).map(s=>s.velocity)):null;
+  const _allShots=allBatchShots(batch);
+  const stats=_allShots.length?calcStats(_allShots.map(s=>s.velocity)):null;
   const tabEl = document.getElementById('tab-drop');
   const bcType = tabEl?._bcType || 'G1';
   const mv   = parseFloat(document.getElementById('env-mv')?.value)||stats?.avg;
