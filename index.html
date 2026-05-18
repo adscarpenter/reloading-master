@@ -406,6 +406,13 @@ textarea.form-control{min-height:80px;resize:vertical;}
   color:var(--accent);padding:8px 12px;background:rgba(44,95,136,.08);
   border:1px solid rgba(44,95,136,.2);margin-bottom:10px;letter-spacing:.5px;}
 .rc-shot-blocked{opacity:.38;cursor:default;pointer-events:none;}
+.tgt-groups-bar{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;}
+.tgt-grp-chip{padding:4px 12px;font-size:11px;font-weight:700;letter-spacing:1px;
+  font-family:'Barlow Condensed',sans-serif;border:1.5px solid var(--gc,var(--border));
+  color:var(--gc,var(--muted2));background:transparent;cursor:pointer;touch-action:manipulation;
+  transition:background .15s,color .15s;}
+.tgt-grp-chip.active{background:var(--gc);color:#fff;}
+.tgt-grp-chip.new-grp{border-color:var(--border);color:var(--muted2);}
 .tgt-sess-list{margin-top:14px;}
 .tgt-sess-filter{display:flex;gap:6px;margin-bottom:10px;}
 .tgt-sess-filter-btn{padding:5px 12px;font-size:10px;font-weight:700;letter-spacing:1.5px;
@@ -2337,14 +2344,24 @@ async function renderChronoTab(batch) {
 
   const tgtRowHtml=t=>{
     const dateLabel=[t.range_date,t.range_time].filter(Boolean).join(' · ');
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--border)" onclick="loadTargetSession(${t.id})">
-      <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${dateLabel||'—'} · ${t.distance}${t.distance_unit}</div>
-      <div style="display:flex;align-items:center;gap:10px">
-        ${t.stats_group_moa!=null?`<span style="font-size:13px;font-weight:700;font-family:'Barlow Condensed',sans-serif;color:var(--ink)">${t.stats_group_moa} MOA</span>`:''}
-        ${t.stats_mean_rad_moa!=null?`<span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">MR ${t.stats_mean_rad_moa}</span>`:''}
-        <span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">${t.stats_shot_count||0} rds</span>
-        <span style="color:var(--accent);font-size:13px">→</span>
+    const grpsHtml = t.stats_groups && t.stats_groups.length > 1 ? `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+        ${t.stats_groups.map(g=>`<span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:${g.color||'var(--muted2)'}">
+          ${g.label} ${g.group_moa?.toFixed(2)} MOA</span>`).join('')}
+      </div>` : '';
+    return `<div style="padding:6px 0;cursor:pointer;border-bottom:1px solid var(--border)" onclick="loadTargetSession(${t.id})">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${dateLabel||'—'} · ${t.distance}${t.distance_unit}</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${t.stats_group_moa!=null?`<span style="font-size:13px;font-weight:700;font-family:'Barlow Condensed',sans-serif;color:var(--ink)">AVG ${t.stats_group_moa} MOA</span>`:''}
+          ${t.stats_mean_rad_moa!=null?`<span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">MR ${t.stats_mean_rad_moa}</span>`:''}
+          ${t.stats_avg_windage_in!=null?`<span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">W ${t.stats_avg_windage_in>=0?'+':''}${t.stats_avg_windage_in}″</span>`:''}
+          ${t.stats_avg_elevation_in!=null?`<span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">E ${t.stats_avg_elevation_in>=0?'+':''}${t.stats_avg_elevation_in}″</span>`:''}
+          <span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">${t.stats_shot_count||0} rds</span>
+          <span style="color:var(--accent);font-size:13px">→</span>
+        </div>
       </div>
+      ${grpsHtml}
     </div>`;
   };
 
@@ -3297,18 +3314,63 @@ async function processXLSX(buffer) {
 // ════════════════════════════════════════════════════
 
 // ── State ──
+const TGT_GROUP_COLORS = ['#2C90D0','#E84C3D','#27AE60','#F39C12','#8E44AD','#16A085','#D35400','#E67E22'];
+
 let _tgt = {
-  image: null, imageData: null, scale: null, poa: null, impacts: [],
+  image: null, imageData: null, scale: null,
+  groups: [{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}], activeGroupId:'g0',
   distYds: 100, distUnit: 'yds', batchId: '', sessionName: '',
   rangeDate: new Date().toISOString().slice(0,10),
   rangeTime: '', firearmdId: '', savedId: null, rangeSessionId: '',
-  mode: 'scale1', impactSize: 'md', dragType: null,
-  scaleP1: null, scaleP2: null, selectedIdx: -1,
+  mode: 'scale1', impactSize: 'md', dragType: null, dragGroupId: null,
+  scaleP1: null, scaleP2: null, selectedGroupId: null, selectedImpactIdx: -1,
   dragging: false, dragOffsetX: 0, dragOffsetY: 0,
   panX: 0, panY: 0, zoom: 1,
   activePointers: {}, lastPinchDist: null,
   lastPinchMidX: null, lastPinchMidY: null,
   isPanning: false, panStart: null,
+};
+
+const activeTgtGroup = () => _tgt.groups.find(g=>g.id===_tgt.activeGroupId)||_tgt.groups[0];
+
+function renumberTgtImpacts() {
+  let num = 1;
+  _tgt.groups.forEach(g => { g.impacts.forEach(imp => { imp.num = num++; }); });
+}
+
+function updateTgtGroupsBar() {
+  const bar = document.getElementById('tgt-groups-bar'); if (!bar) return;
+  bar.innerHTML = _tgt.groups.map(g=>`<button class="tgt-grp-chip${g.id===_tgt.activeGroupId?' active':''}" style="--gc:${g.color}" onclick="setActiveTgtGroup('${g.id}')">${g.label}</button>`).join('')+
+    (_tgt.groups.length<8?`<button class="tgt-grp-chip new-grp" onclick="addTgtGroup()">+ GRP</button>`:'');
+}
+
+window.setActiveTgtGroup = id => {
+  _tgt.activeGroupId = id;
+  _tgt.selectedGroupId = null; _tgt.selectedImpactIdx = -1;
+  updateTgtGroupsBar();
+  drawTargetCanvas();
+};
+
+window.addTgtGroup = () => {
+  if (_tgt.groups.length >= 8) { toast('MAX 8 GROUPS','error'); return; }
+  const idx = _tgt.groups.length;
+  const id = 'g'+Date.now().toString(36);
+  _tgt.groups.push({ id, label:`G${idx+1}`, color:TGT_GROUP_COLORS[idx%TGT_GROUP_COLORS.length], poa:null, impacts:[] });
+  _tgt.activeGroupId = id;
+  updateTgtGroupsBar();
+  drawTargetCanvas();
+  renderTargetStats();
+};
+
+window.deleteTgtGroup = id => {
+  if (_tgt.groups.length <= 1) return;
+  if (!confirm_(`Delete ${_tgt.groups.find(g=>g.id===id)?.label}?`)) return;
+  _tgt.groups = _tgt.groups.filter(g=>g.id!==id);
+  if (_tgt.activeGroupId===id) _tgt.activeGroupId=_tgt.groups[0].id;
+  renumberTgtImpacts();
+  updateTgtGroupsBar();
+  drawTargetCanvas();
+  renderTargetStats();
 };
 
 register('target', async () => {
@@ -3382,6 +3444,8 @@ register('target', async () => {
 
     <!-- Canvas area -->
     ${_tgt.imageData ? `
+    <!-- Groups bar -->
+    <div class="tgt-groups-bar" id="tgt-groups-bar">${_tgt.groups.map(g=>`<button class="tgt-grp-chip${g.id===_tgt.activeGroupId?' active':''}" style="--gc:${g.color}" onclick="setActiveTgtGroup('${g.id}')">${g.label}</button>`).join('')}${_tgt.groups.length<8?`<button class="tgt-grp-chip new-grp" onclick="addTgtGroup()">+ GRP</button>`:''}</div>
     <!-- Two-row toolbar -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
       <button class="target-tool-btn${_tgt.mode==='scale1'||_tgt.mode==='scale2'?' active':''}" id="tool-scale" onclick="setTgtMode('scale1')">SCALE</button>
@@ -3471,8 +3535,10 @@ window.loadTargetImageFile = file => {
   const reader = new FileReader();
   reader.onload = ev => {
     _tgt.imageData = ev.target.result;
-    _tgt.image = null; _tgt.scale = null; _tgt.poa = null;
-    _tgt.impacts = []; _tgt.mode = 'scale1'; _tgt.sessionName = '';
+    _tgt.image = null; _tgt.scale = null;
+    _tgt.groups = [{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}];
+    _tgt.activeGroupId='g0'; _tgt.selectedGroupId=null; _tgt.selectedImpactIdx=-1;
+    _tgt.mode = 'scale1'; _tgt.sessionName = '';
     _tgt.scaleP1 = null; _tgt.scaleP2 = null;
     navigate('target');
   };
@@ -3540,14 +3606,16 @@ function getCanvasPos(e) {
 function hitTestImpact(cx, cy) {
   const BASE_R = _tgt.impactSize==='sm'?10:_tgt.impactSize==='lg'?26:18;
   const C_HIT = Math.max(BASE_R+8,22), H_HIT=18, H_OFF=BASE_R+30;
-  for (let i = _tgt.impacts.length - 1; i >= 0; i--) {
-    const c = imageToCanvas(_tgt.impacts[i].x, _tgt.impacts[i].y);
-    const dx=cx-c.x, dy=cy-c.y;
-    if (Math.sqrt(dx*dx+dy*dy)<C_HIT) return i;
-    const hdy=cy-(c.y+H_OFF);
-    if (Math.sqrt(dx*dx+hdy*hdy)<H_HIT) return i;
+  for (const g of _tgt.groups) {
+    for (let i = g.impacts.length - 1; i >= 0; i--) {
+      const c = imageToCanvas(g.impacts[i].x, g.impacts[i].y);
+      const dx=cx-c.x, dy=cy-c.y;
+      if (Math.sqrt(dx*dx+dy*dy)<C_HIT) return {g, i};
+      const hdy=cy-(c.y+H_OFF);
+      if (Math.sqrt(dx*dx+hdy*hdy)<H_HIT) return {g, i};
+    }
   }
-  return -1;
+  return null;
 }
 
 function onTgtPointerDown(e) {
@@ -3569,10 +3637,19 @@ function onTgtPointerDown(e) {
   // EDIT mode: hit-test existing markers first
   if (_tgt.mode === 'select') {
     const {x, y} = getCanvasPos(e);
-    const HIT_POA = 22, HIT_SCALE = 18;
-    if (_tgt.poa) {
-      const c = imageToCanvas(_tgt.poa.x, _tgt.poa.y), dx = x-c.x, dy = y-c.y;
-      if (Math.sqrt(dx*dx+dy*dy) < HIT_POA) { _tgt.dragging=true; _tgt.dragType='poa'; _tgt.dragOffsetX=dx; _tgt.dragOffsetY=dy; return; }
+    const HIT_SCALE = 18;
+    // Check all group POAs
+    let hitPoa = null;
+    for (const g of _tgt.groups) {
+      if (!g.poa) continue;
+      const c = imageToCanvas(g.poa.x, g.poa.y), dx = x-c.x, dy = y-c.y;
+      if (Math.sqrt(dx*dx+dy*dy) < 22) { hitPoa = g; break; }
+    }
+    if (hitPoa) {
+      _tgt.dragType = 'poa'; _tgt.dragGroupId = hitPoa.id;
+      _tgt.dragging = true; _tgt.dragOffsetX = 0; _tgt.dragOffsetY = 0;
+      _tgt.selectedGroupId = null; _tgt.selectedImpactIdx = -1;
+      drawTargetCanvas(); return;
     }
     if (_tgt.scaleP2) {
       const c = imageToCanvas(_tgt.scaleP2.x, _tgt.scaleP2.y), dx = x-c.x, dy = y-c.y;
@@ -3582,16 +3659,25 @@ function onTgtPointerDown(e) {
       const c = imageToCanvas(_tgt.scaleP1.x, _tgt.scaleP1.y), dx = x-c.x, dy = y-c.y;
       if (Math.sqrt(dx*dx+dy*dy) < HIT_SCALE) { _tgt.dragging=true; _tgt.dragType='scale1'; _tgt.dragOffsetX=dx; _tgt.dragOffsetY=dy; return; }
     }
-    const idx = hitTestImpact(x, y);
-    if (idx >= 0) {
-      _tgt.selectedIdx = idx; _tgt.dragging = true; _tgt.dragType = 'impact';
-      const c = imageToCanvas(_tgt.impacts[idx].x, _tgt.impacts[idx].y);
-      _tgt.dragOffsetX = x-c.x; _tgt.dragOffsetY = y-c.y;
+    // Check all impacts across groups
+    let bestD = Infinity, bestG = null, bestI = -1;
+    for (const g of _tgt.groups) {
+      for (let i = g.impacts.length-1; i >= 0; i--) {
+        const c = imageToCanvas(g.impacts[i].x, g.impacts[i].y);
+        const d = Math.sqrt((x-c.x)**2+(y-c.y)**2);
+        if (d < 28 && d < bestD) { bestD=d; bestG=g; bestI=i; }
+      }
+    }
+    if (bestG) {
+      _tgt.selectedGroupId=bestG.id; _tgt.selectedImpactIdx=bestI;
+      _tgt.dragging=true; _tgt.dragType='impact'; _tgt.dragGroupId=bestG.id;
+      const c=imageToCanvas(bestG.impacts[bestI].x, bestG.impacts[bestI].y);
+      _tgt.dragOffsetX=x-c.x; _tgt.dragOffsetY=y-c.y;
       const dw = document.getElementById('tgt-delete-wrap');
       if (dw) dw.style.display = '';
       drawTargetCanvas(); return;
     }
-    _tgt.selectedIdx = -1;
+    _tgt.selectedGroupId=null; _tgt.selectedImpactIdx=-1;
     const dw = document.getElementById('tgt-delete-wrap');
     if (dw) dw.style.display = 'none';
     drawTargetCanvas();
@@ -3627,10 +3713,19 @@ function onTgtPointerMove(e) {
   if (_tgt.dragging && _tgt.mode === 'select') {
     const {x, y} = getCanvasPos(e);
     const imgPos = canvasToImage(x - _tgt.dragOffsetX, y - _tgt.dragOffsetY);
-    if (_tgt.dragType === 'poa') { _tgt.poa = imgPos; drawTargetCanvas(); renderTargetStats(); return; }
+    if (_tgt.dragType === 'poa') {
+      const dg=_tgt.groups.find(g=>g.id===_tgt.dragGroupId)||activeTgtGroup();
+      dg.poa=imgPos; drawTargetCanvas(); renderTargetStats(); return;
+    }
     if (_tgt.dragType === 'scale1') { _tgt.scaleP1 = imgPos; if (_tgt.scaleP2) computeScale(true); drawTargetCanvas(); return; }
     if (_tgt.dragType === 'scale2') { _tgt.scaleP2 = imgPos; if (_tgt.scaleP1) computeScale(true); drawTargetCanvas(); return; }
-    if (_tgt.selectedIdx >= 0) { _tgt.impacts[_tgt.selectedIdx] = {..._tgt.impacts[_tgt.selectedIdx], x: imgPos.x, y: imgPos.y}; drawTargetCanvas(); renderTargetStats(); return; }
+    if (_tgt.selectedGroupId && _tgt.selectedImpactIdx >= 0) {
+      const dg=_tgt.groups.find(g=>g.id===_tgt.selectedGroupId);
+      if (dg && dg.impacts[_tgt.selectedImpactIdx]) {
+        dg.impacts[_tgt.selectedImpactIdx]={...dg.impacts[_tgt.selectedImpactIdx],x:imgPos.x,y:imgPos.y};
+      }
+      drawTargetCanvas(); renderTargetStats(); return;
+    }
     return;
   }
 
@@ -3719,14 +3814,16 @@ window.addTgtMark = () => {
     return;
   }
   if (_tgt.mode === 'poa') {
-    _tgt.poa = imgPos;
+    activeTgtGroup().poa = imgPos;
+    updateTgtGroupsBar();
     drawTargetCanvas(); renderTargetStats();
     setTgtMode('impact');
     toast('POA SET','success');
     return;
   }
   if (_tgt.mode === 'impact') {
-    _tgt.impacts.push({ x: imgPos.x, y: imgPos.y, num: _tgt.impacts.length + 1 });
+    const totalBefore = _tgt.groups.reduce((s,g)=>s+g.impacts.length,0);
+    activeTgtGroup().impacts.push({ x: imgPos.x, y: imgPos.y, num: totalBefore+1 });
     drawTargetCanvas(); renderTargetStats();
   }
 };
@@ -3765,7 +3862,7 @@ window.setImpactSize = size => {
 window.setTgtMode = mode => {
   _tgt.mode = mode;
   _tgt.dragging = false; _tgt.dragType = null;
-  if (mode !== 'select') _tgt.selectedIdx = -1;
+  if (mode !== 'select') { _tgt.selectedGroupId = null; _tgt.selectedImpactIdx = -1; }
   ['scale','poa','impact','select'].forEach(m => {
     const b = document.getElementById(`tool-${m}`);
     if (b) b.className = `target-tool-btn${(mode===m||(mode==='scale2'&&m==='scale'))?' active':''}`;
@@ -3773,7 +3870,7 @@ window.setTgtMode = mode => {
   const sw = document.getElementById('tgt-scale-wrap');
   if (sw) sw.style.display = (mode==='scale1'||mode==='scale2') ? '' : 'none';
   const dw = document.getElementById('tgt-delete-wrap');
-  if (dw) dw.style.display = (mode==='select'&&_tgt.selectedIdx>=0) ? '' : 'none';
+  if (dw) dw.style.display = (mode==='select'&&_tgt.selectedImpactIdx>=0) ? '' : 'none';
   updateAddBtn();
   updateReticleColor();
   updateTgtHint();
@@ -3817,74 +3914,104 @@ function drawTargetCanvas() {
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
   }
 
-  // ── POA crosshair ──
-  if (_tgt.poa) {
-    const c = imageToCanvas(_tgt.poa.x, _tgt.poa.y);
-    const R = 12, ARM = 20;
-    ctx.strokeStyle = '#00e676'; ctx.lineWidth = 2.5; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(c.x-ARM, c.y); ctx.lineTo(c.x-R, c.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x+R, c.y);   ctx.lineTo(c.x+ARM, c.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x, c.y-ARM); ctx.lineTo(c.x, c.y-R); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(c.x, c.y+R);   ctx.lineTo(c.x, c.y+ARM); ctx.stroke();
-    ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI*2);
-    ctx.strokeStyle = '#00e676'; ctx.lineWidth = 2; ctx.stroke();
-  }
-
-  // ── Impacts ──
   const IMPACT_R  = _tgt.impactSize==='sm'?10:_tgt.impactSize==='lg'?26:18;
   const FONT_SZ   = _tgt.impactSize==='sm'? 8:_tgt.impactSize==='lg'?17:13;
   const CHX_GAP   = Math.max(IMPACT_R*0.38,4);
   const HANDLE_OFFSET = 30;
-  _tgt.impacts.forEach((imp, i) => {
-    const c=imageToCanvas(imp.x,imp.y), isSel=_tgt.selectedIdx===i;
-    const ring=isSel?'#b24c3d':'#2c5f88', fill=isSel?'rgba(178,76,61,0.22)':'rgba(44,95,136,0.18)';
-    ctx.beginPath();ctx.arc(c.x,c.y,IMPACT_R,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();
-    ctx.strokeStyle=ring;ctx.lineWidth=isSel?2.5:2;ctx.setLineDash([]);ctx.stroke();
-    // Crosshair arms
-    ctx.strokeStyle=isSel?'rgba(178,76,61,0.9)':'rgba(44,95,136,0.85)';ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.moveTo(c.x-IMPACT_R,c.y);ctx.lineTo(c.x-CHX_GAP,c.y);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(c.x+CHX_GAP,c.y);ctx.lineTo(c.x+IMPACT_R,c.y);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(c.x,c.y-IMPACT_R);ctx.lineTo(c.x,c.y-CHX_GAP);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(c.x,c.y+CHX_GAP);ctx.lineTo(c.x,c.y+IMPACT_R);ctx.stroke();
-    // Number with shadow
-    ctx.font=`bold ${FONT_SZ}px 'Share Tech Mono',monospace`;
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=2.5;ctx.strokeText(imp.num,c.x,c.y);
-    ctx.fillStyle=isSel?'#b24c3d':'#fff';ctx.fillText(imp.num,c.x,c.y);
-    // Diamond handle (edit mode only)
-    if (_tgt.mode==='select') {
-      const hx=c.x, hy=c.y+IMPACT_R+HANDLE_OFFSET;
-      ctx.beginPath();ctx.moveTo(c.x,c.y+IMPACT_R);ctx.lineTo(hx,hy);
-      ctx.strokeStyle=isSel?'rgba(178,76,61,0.7)':'rgba(44,95,136,0.6)';
-      ctx.lineWidth=1.5;ctx.setLineDash([3,2]);ctx.stroke();ctx.setLineDash([]);
-      ctx.save();ctx.translate(hx,hy);ctx.rotate(Math.PI/4);
-      ctx.fillStyle=isSel?'#b24c3d':'#2c5f88';
-      ctx.strokeStyle='rgba(255,255,255,0.8)';ctx.lineWidth=1.5;
-      ctx.fillRect(-7,-7,14,14);ctx.strokeRect(-7,-7,14,14);
-      ctx.restore();
+
+  _tgt.groups.forEach(g => {
+    const col = g.color;
+    const isActiveGrp = g.id === _tgt.activeGroupId;
+
+    // ── POA crosshair ──
+    if (g.poa) {
+      const c = imageToCanvas(g.poa.x, g.poa.y);
+      const R = 12, ARM = 20;
+      ctx.strokeStyle = col; ctx.lineWidth = isActiveGrp?2.5:1.5; ctx.setLineDash([]);
+      ctx.globalAlpha = isActiveGrp ? 1 : 0.55;
+      ctx.beginPath(); ctx.moveTo(c.x-ARM, c.y); ctx.lineTo(c.x-R, c.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c.x+R, c.y);   ctx.lineTo(c.x+ARM, c.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c.x, c.y-ARM); ctx.lineTo(c.x, c.y-R); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c.x, c.y+R);   ctx.lineTo(c.x, c.y+ARM); ctx.stroke();
+      ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, Math.PI*2);
+      ctx.strokeStyle = col; ctx.lineWidth = isActiveGrp?2:1.5; ctx.stroke();
+      // Group label
+      ctx.font=`bold 10px 'Barlow Condensed',sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillStyle=col; ctx.globalAlpha=isActiveGrp?1:0.6;
+      ctx.fillText(g.label, c.x, c.y-ARM-2);
+      ctx.globalAlpha=1;
+    }
+
+    // ── Impacts ──
+    g.impacts.forEach((imp, i) => {
+      const c=imageToCanvas(imp.x,imp.y);
+      const isSel=_tgt.selectedGroupId===g.id&&_tgt.selectedImpactIdx===i;
+      const alpha = isActiveGrp ? 1 : 0.55;
+      ctx.globalAlpha = alpha;
+      const hexToRgba = (hex, a) => {
+        const r=parseInt(hex.slice(1,3),16),g2=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+        return `rgba(${r},${g2},${b},${a})`;
+      };
+      ctx.beginPath();ctx.arc(c.x,c.y,IMPACT_R,0,Math.PI*2);
+      ctx.fillStyle=isSel?'rgba(178,76,61,0.22)':hexToRgba(col,0.18);ctx.fill();
+      ctx.strokeStyle=isSel?'#b24c3d':col;ctx.lineWidth=isSel?2.5:2;ctx.setLineDash([]);ctx.stroke();
+      ctx.strokeStyle=isSel?'rgba(178,76,61,0.9)':hexToRgba(col,0.85);ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(c.x-IMPACT_R,c.y);ctx.lineTo(c.x-CHX_GAP,c.y);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(c.x+CHX_GAP,c.y);ctx.lineTo(c.x+IMPACT_R,c.y);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(c.x,c.y-IMPACT_R);ctx.lineTo(c.x,c.y-CHX_GAP);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(c.x,c.y+CHX_GAP);ctx.lineTo(c.x,c.y+IMPACT_R);ctx.stroke();
+      ctx.font=`bold ${FONT_SZ}px 'Share Tech Mono',monospace`;
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=2.5;ctx.strokeText(imp.num,c.x,c.y);
+      ctx.fillStyle=isSel?'#b24c3d':'#fff';ctx.fillText(imp.num,c.x,c.y);
+      if (_tgt.mode==='select') {
+        const hx=c.x, hy=c.y+IMPACT_R+HANDLE_OFFSET;
+        ctx.beginPath();ctx.moveTo(c.x,c.y+IMPACT_R);ctx.lineTo(hx,hy);
+        ctx.strokeStyle=isSel?'rgba(178,76,61,0.7)':hexToRgba(col,0.6);
+        ctx.lineWidth=1.5;ctx.setLineDash([3,2]);ctx.stroke();ctx.setLineDash([]);
+        ctx.save();ctx.translate(hx,hy);ctx.rotate(Math.PI/4);
+        ctx.fillStyle=isSel?'#b24c3d':col;
+        ctx.strokeStyle='rgba(255,255,255,0.8)';ctx.lineWidth=1.5;
+        ctx.fillRect(-7,-7,14,14);ctx.strokeRect(-7,-7,14,14);
+        ctx.restore();
+      }
+      ctx.globalAlpha=1;
+    });
+
+    // ── Group enclosing circle ──
+    if (g.poa && g.impacts.length >= 2 && _tgt.scale) {
+      const pxPerIn = _tgt.scale;
+      const shots = g.impacts.map(imp=>({
+        wx:(imp.x-g.poa.x)/pxPerIn, wy:(imp.y-g.poa.y)/pxPerIn
+      }));
+      let gs=0;
+      for(let a=0;a<shots.length;a++) for(let b=a+1;b<shots.length;b++){
+        const d=Math.sqrt((g.impacts[a].x-g.impacts[b].x)**2+(g.impacts[a].y-g.impacts[b].y)**2);
+        if(d>gs)gs=d;
+      }
+      const cx2=shots.reduce((s,sh)=>s+sh.wx,0)/shots.length;
+      const cy2=shots.reduce((s,sh)=>s+sh.wy,0)/shots.length;
+      const centC=imageToCanvas(g.poa.x+cx2*pxPerIn, g.poa.y+cy2*pxPerIn);
+      const groupRadiusPx=(gs/2)*(canvas.width/_tgt.image.width);
+      ctx.globalAlpha=isActiveGrp?0.35:0.15;
+      ctx.beginPath();ctx.arc(centC.x,centC.y,groupRadiusPx,0,Math.PI*2);
+      ctx.strokeStyle=g.color;ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
+      ctx.beginPath();ctx.arc(centC.x,centC.y,4,0,Math.PI*2);
+      ctx.fillStyle=g.color;ctx.fill();
+      ctx.globalAlpha=1;
     }
   });
 
-  // ── Group circle (smallest enclosing circle approx) ──
-  if (_tgt.poa && _tgt.impacts.length >= 2 && _tgt.scale) {
-    const stats = calcTargetStats();
-    if (stats) {
-      const cc = imageToCanvas(stats.centroid.x, stats.centroid.y);
-      const groupRadiusPx = (stats.groupSize / 2) * _tgt.scale;
-      ctx.beginPath(); ctx.arc(cc.x, cc.y, groupRadiusPx * (canvas.width/_tgt.image.width), 0, Math.PI*2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
-      ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
-      ctx.beginPath(); ctx.arc(cc.x, cc.y, 4, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
-    }
-  }
-  // ── Edit-mode draggable rings for POA and scale points ──
+  // ── Edit-mode draggable rings ──
   if (_tgt.mode==='select') {
-    if (_tgt.poa) {
-      const c=imageToCanvas(_tgt.poa.x,_tgt.poa.y);
-      ctx.beginPath();ctx.arc(c.x,c.y,16,0,Math.PI*2);
-      ctx.strokeStyle='rgba(0,230,118,0.8)';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
-    }
+    _tgt.groups.forEach(g=>{
+      if (g.poa) {
+        const c=imageToCanvas(g.poa.x,g.poa.y);
+        ctx.beginPath();ctx.arc(c.x,c.y,16,0,Math.PI*2);
+        ctx.strokeStyle=g.color;ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+      }
+    });
     [{pt:_tgt.scaleP1,col:'rgba(255,215,0,0.9)'},{pt:_tgt.scaleP2,col:'rgba(255,215,0,0.9)'}].forEach(({pt,col})=>{
       if(!pt)return;
       const c=imageToCanvas(pt.x,pt.y);
@@ -3895,76 +4022,83 @@ function drawTargetCanvas() {
 }
 
 window.undoLastImpact = () => {
-  if (_tgt.impacts.length === 0) return;
-  _tgt.impacts.pop();
-  // Renumber
-  _tgt.impacts.forEach((imp,i) => imp.num = i+1);
-  drawTargetCanvas();
-  renderTargetStats();
+  // Pop last impact from last non-empty group
+  for (let gi = _tgt.groups.length-1; gi >= 0; gi--) {
+    if (_tgt.groups[gi].impacts.length > 0) {
+      _tgt.groups[gi].impacts.pop();
+      renumberTgtImpacts();
+      drawTargetCanvas(); renderTargetStats(); return;
+    }
+  }
 };
 window.deleteSelectedImpact = () => {
-  if (_tgt.selectedIdx < 0) return;
-  _tgt.impacts.splice(_tgt.selectedIdx, 1);
-  _tgt.impacts.forEach((imp,i) => imp.num = i+1);
-  _tgt.selectedIdx = -1;
+  if (!_tgt.selectedGroupId || _tgt.selectedImpactIdx < 0) return;
+  const dg = _tgt.groups.find(g=>g.id===_tgt.selectedGroupId);
+  if (dg) dg.impacts.splice(_tgt.selectedImpactIdx, 1);
+  renumberTgtImpacts();
+  _tgt.selectedGroupId=null; _tgt.selectedImpactIdx=-1;
   document.getElementById('tgt-delete-wrap').style.display = 'none';
   drawTargetCanvas();
   renderTargetStats();
 };
 window.clearTargetSession = () => {
   if (!confirm_('Clear all marks? Image will remain.')) return;
-  _tgt.poa = null; _tgt.impacts = []; _tgt.scaleP1 = null; _tgt.scaleP2 = null;
-  _tgt.scale = null; _tgt.selectedIdx = -1;
+  _tgt.groups = [{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}];
+  _tgt.activeGroupId='g0'; _tgt.selectedGroupId=null; _tgt.selectedImpactIdx=-1;
+  _tgt.scaleP1 = null; _tgt.scaleP2 = null; _tgt.scale = null;
+  updateTgtGroupsBar();
   drawTargetCanvas(); renderTargetStats();
 };
 
 // ── Stats engine ──
-function calcTargetStats() {
-  if (!_tgt.poa || _tgt.impacts.length < 1 || !_tgt.scale) return null;
+function calcTargetStatsForGroup(g) {
+  if (!g.poa || g.impacts.length < 1 || !_tgt.scale) return null;
   const pxPerIn = _tgt.scale;
-  const distIn  = _tgt.distUnit==='m' ? _tgt.distYds * 39.3701 : _tgt.distYds * 36;
-  const moaFactor = 1.047 / 36; // 1 MOA in inches per yard
-
-  const shots = _tgt.impacts.map(imp => {
-    const dx = (imp.x - _tgt.poa.x) / pxPerIn;  // inches, + = right
-    const dy = (imp.y - _tgt.poa.y) / pxPerIn;  // inches, + = down (image coords)
-    const windage   =  dx;                        // + = right
-    const elevation = -dy;                        // + = up
-    const dist      = Math.sqrt(dx*dx + dy*dy);
-    return { num: imp.num, dist, windage, elevation };
-  });
-
-  const cx = shots.reduce((s,sh)=>s+sh.windage,  0) / shots.length;
-  const cy = shots.reduce((s,sh)=>s+sh.elevation, 0) / shots.length;
-  const centroid = {
-    x: _tgt.poa.x + cx * pxPerIn,
-    y: _tgt.poa.y - cy * pxPerIn,
-    windage: cx, elevation: cy,
-  };
-
-  const meanRadius = shots.reduce((s,sh)=>{
-    const d = Math.sqrt((sh.windage-cx)**2 + (sh.elevation-cy)**2);
-    return s + d;
-  }, 0) / shots.length;
-
-  // Group size = max distance between any two impacts
-  let groupSize = 0;
-  for (let a=0; a<shots.length; a++) for (let b=a+1; b<shots.length; b++) {
-    const d = Math.sqrt((_tgt.impacts[a].x-_tgt.impacts[b].x)**2+(_tgt.impacts[a].y-_tgt.impacts[b].y)**2)/pxPerIn;
-    if (d > groupSize) groupSize = d;
-  }
-
-  // W/H spread
-  const winds = shots.map(s=>s.windage), elevs = shots.map(s=>s.elevation);
-  const wSpread = Math.max(...winds) - Math.min(...winds);
-  const hSpread = Math.max(...elevs) - Math.min(...elevs);
-
-  // MOA
   const yds = _tgt.distUnit==='m' ? _tgt.distYds*1.09361 : _tgt.distYds;
-  const groupMOA     = yds > 0 ? groupSize     / (yds * moaFactor * 36) * 100 / 1.047 : 0;
-  const meanRadMOA   = yds > 0 ? meanRadius    / (yds * moaFactor * 36) * 100 / 1.047 : 0;
+  const inToMOA = v => yds > 0 ? (v / (yds * 1.047 / 100)) : 0;
 
-  return { shots, centroid, meanRadius, groupSize, wSpread, hSpread, groupMOA, meanRadMOA };
+  const shots = g.impacts.map(imp => {
+    const dx=(imp.x-g.poa.x)/pxPerIn, dy=(imp.y-g.poa.y)/pxPerIn;
+    return { num:imp.num, windage:dx, elevation:-dy, dist:Math.sqrt(dx*dx+dy*dy) };
+  });
+  const cx=shots.reduce((s,sh)=>s+sh.windage,0)/shots.length;
+  const cy=shots.reduce((s,sh)=>s+sh.elevation,0)/shots.length;
+  const centroid={ x:g.poa.x+cx*pxPerIn, y:g.poa.y-cy*pxPerIn, windage:cx, elevation:cy };
+  const meanRadius=shots.reduce((s,sh)=>s+Math.sqrt((sh.windage-cx)**2+(sh.elevation-cy)**2),0)/shots.length;
+  let groupSize=0;
+  for(let a=0;a<shots.length;a++) for(let b=a+1;b<shots.length;b++){
+    const d=Math.sqrt((g.impacts[a].x-g.impacts[b].x)**2+(g.impacts[a].y-g.impacts[b].y)**2)/pxPerIn;
+    if(d>groupSize)groupSize=d;
+  }
+  const winds=shots.map(s=>s.windage), elevs=shots.map(s=>s.elevation);
+  return {
+    groupId:g.id, label:g.label, color:g.color, shots, centroid, meanRadius, groupSize,
+    wSpread:Math.max(...winds)-Math.min(...winds), hSpread:Math.max(...elevs)-Math.min(...elevs),
+    groupMOA:inToMOA(groupSize), meanRadMOA:inToMOA(meanRadius),
+  };
+}
+
+function calcTargetStats() {
+  if (!_tgt.scale) return null;
+  const groupStats = _tgt.groups.map(calcTargetStatsForGroup).filter(Boolean);
+  if (!groupStats.length) return null;
+  const totalShots = groupStats.reduce((s,g)=>s+g.shots.length,0);
+  const avgGroupMOA = groupStats.reduce((s,g)=>s+g.groupMOA,0)/groupStats.length;
+  const avgMeanRadMOA = groupStats.reduce((s,g)=>s+g.meanRadMOA,0)/groupStats.length;
+  const avgWindage = groupStats.reduce((s,g)=>s+g.centroid.windage*g.shots.length,0)/totalShots;
+  const avgElevation = groupStats.reduce((s,g)=>s+g.centroid.elevation*g.shots.length,0)/totalShots;
+  // For backwards compat with code that uses stats.groupMOA etc directly (single-group case)
+  const first = groupStats[0];
+  return {
+    groups: groupStats,
+    aggregate: { totalShots, avgGroupMOA, avgMeanRadMOA, avgWindage, avgElevation },
+    // Expose first-group values for single-group compat
+    centroid: groupStats.length===1 ? first.centroid : { windage:avgWindage, elevation:avgElevation, x:0, y:0 },
+    groupMOA: avgGroupMOA, meanRadMOA: avgMeanRadMOA,
+    groupSize: first.groupSize, meanRadius: first.meanRadius,
+    wSpread: first.wSpread, hSpread: first.hSpread,
+    shots: groupStats.flatMap(g=>g.shots),
+  };
 }
 
 function renderTargetStats() {
@@ -3972,59 +4106,76 @@ function renderTargetStats() {
   const stats = calcTargetStats();
   if (!stats) {
     el.innerHTML = !_tgt.scale ? `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET SCALE → POA → MARK IMPACTS TO SEE STATS</p>` :
-      !_tgt.poa ? `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET POA THEN MARK IMPACTS</p>` :
+      !activeTgtGroup().poa ? `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// SET POA THEN MARK IMPACTS</p>` :
       `<p style="font-size:12px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">// MARK AT LEAST 1 IMPACT</p>`;
     return;
   }
-  const {shots, centroid, meanRadius, groupSize, wSpread, hSpread, groupMOA, meanRadMOA} = stats;
+  const { groups: gStats, aggregate: agg } = stats;
+  const multiGroup = gStats.length > 1;
 
-  el.innerHTML = `
-    <div class="section-title">Group Statistics</div>
+  // Aggregate stat boxes
+  let html = `
+    <div class="section-title">Group Statistics${multiGroup?' — '+gStats.length+' Groups':''}</div>
     <div class="tgt-stat-grid">
       <div class="tgt-stat-box hi">
-        <div class="tgt-stat-label">Group Size</div>
-        <div class="tgt-stat-val">${groupSize.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
-        <div style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-top:2px">${groupMOA.toFixed(2)} MOA</div>
+        <div class="tgt-stat-label">${multiGroup?'Avg ':''}Group Size</div>
+        <div class="tgt-stat-val">${multiGroup?agg.avgGroupMOA.toFixed(2):gStats[0].groupSize.toFixed(3)}<span class="tgt-stat-unit">${multiGroup?'MOA':'in'}</span></div>
+        ${multiGroup?'':` <div style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-top:2px">${gStats[0].groupMOA.toFixed(2)} MOA</div>`}
       </div>
       <div class="tgt-stat-box hi">
-        <div class="tgt-stat-label">Mean Radius</div>
-        <div class="tgt-stat-val">${meanRadius.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
-        <div style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-top:2px">${meanRadMOA.toFixed(2)} MOA</div>
+        <div class="tgt-stat-label">${multiGroup?'Avg ':''}Mean Radius</div>
+        <div class="tgt-stat-val">${multiGroup?agg.avgMeanRadMOA.toFixed(2):gStats[0].meanRadius.toFixed(3)}<span class="tgt-stat-unit">${multiGroup?'MOA':'in'}</span></div>
+        ${multiGroup?'':` <div style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-top:2px">${gStats[0].meanRadMOA.toFixed(2)} MOA</div>`}
       </div>
       <div class="tgt-stat-box">
-        <div class="tgt-stat-label">POI-POA Windage</div>
-        <div class="tgt-stat-val" style="color:${Math.abs(centroid.windage)<0.1?'var(--success)':centroid.windage>0?'var(--info)':'var(--info)'}">
-          ${centroid.windage>=0?'+':''}${centroid.windage.toFixed(3)}<span class="tgt-stat-unit">in</span>
-        </div>
-        <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${centroid.windage>=0?'RIGHT':'LEFT'}</div>
+        <div class="tgt-stat-label">Avg POI Windage</div>
+        <div class="tgt-stat-val" style="color:var(--info)">${agg.avgWindage>=0?'+':''}${agg.avgWindage.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
+        <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${agg.avgWindage>=0?'RIGHT':'LEFT'}</div>
       </div>
       <div class="tgt-stat-box">
-        <div class="tgt-stat-label">POI-POA Elevation</div>
-        <div class="tgt-stat-val" style="color:${Math.abs(centroid.elevation)<0.1?'var(--success)':centroid.elevation>0?'var(--success)':'var(--danger)'}">
-          ${centroid.elevation>=0?'+':''}${centroid.elevation.toFixed(3)}<span class="tgt-stat-unit">in</span>
-        </div>
-        <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${centroid.elevation>=0?'HIGH':'LOW'}</div>
+        <div class="tgt-stat-label">Avg POI Elevation</div>
+        <div class="tgt-stat-val" style="color:${agg.avgElevation>=0?'var(--success)':'var(--danger)'}">${agg.avgElevation>=0?'+':''}${agg.avgElevation.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
+        <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${agg.avgElevation>=0?'HIGH':'LOW'}</div>
       </div>
-      <div class="tgt-stat-box">
-        <div class="tgt-stat-label">Width Spread</div>
-        <div class="tgt-stat-val">${wSpread.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
-      </div>
-      <div class="tgt-stat-box">
-        <div class="tgt-stat-label">Height Spread</div>
-        <div class="tgt-stat-val">${hSpread.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
-      </div>
-    </div>
+    </div>`;
 
-    <div class="section-title">Shot Data — ${shots.length} Impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>
+  // Per-group breakdown (multi-group only)
+  if (multiGroup) {
+    html += `<div style="overflow-x:auto;margin-top:10px"><table class="tgt-shot-table">
+      <thead><tr><th>Grp</th><th>Shots</th><th>Grp MOA</th><th>MR MOA</th><th>Wind (in)</th><th>Elev (in)</th></tr></thead>
+      <tbody>${gStats.map(g=>`<tr>
+        <td><span style="display:inline-block;width:8px;height:8px;background:${g.color};border-radius:50%;margin-right:4px"></span>${g.label}</td>
+        <td>${g.shots.length}</td>
+        <td style="font-weight:700;color:var(--accent)">${g.groupMOA.toFixed(2)}</td>
+        <td>${g.meanRadMOA.toFixed(2)}</td>
+        <td style="color:var(--info)">${g.centroid.windage>=0?'+':''}${g.centroid.windage.toFixed(3)}</td>
+        <td style="color:${g.centroid.elevation>=0?'var(--success)':'var(--danger)'}">${g.centroid.elevation>=0?'+':''}${g.centroid.elevation.toFixed(3)}</td>
+      </tr>`).join('')}
+      <tr style="border-top:2px solid var(--border);font-weight:700">
+        <td>AVG</td><td>${agg.totalShots}</td>
+        <td style="color:var(--accent)">${agg.avgGroupMOA.toFixed(2)}</td>
+        <td>${agg.avgMeanRadMOA.toFixed(2)}</td>
+        <td style="color:var(--info)">${agg.avgWindage>=0?'+':''}${agg.avgWindage.toFixed(3)}</td>
+        <td style="color:${agg.avgElevation>=0?'var(--success)':'var(--danger)'}">${agg.avgElevation>=0?'+':''}${agg.avgElevation.toFixed(3)}</td>
+      </tr></tbody>
+    </table></div>`;
+  }
+
+  // Shot data table (single group — same as before; multi-group — show per-group)
+  if (!multiGroup && gStats[0]) {
+    const s0 = gStats[0];
+    html += `<div class="section-title">Shot Data — ${s0.shots.length} Impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>
     <div style="overflow-x:auto"><table class="tgt-shot-table">
       <thead><tr><th>#</th><th>Dist (in)</th><th>Wind (in)</th><th>Elev (in)</th></tr></thead>
-      <tbody>${shots.map(s=>`<tr>
-        <td>${s.num}</td>
-        <td>${s.dist.toFixed(3)}</td>
-        <td style="color:${s.windage>=0?'var(--info)':'var(--info)'}">${s.windage>=0?'+':''}${s.windage.toFixed(3)}</td>
+      <tbody>${s0.shots.map(s=>`<tr>
+        <td>${s.num}</td><td>${s.dist.toFixed(3)}</td>
+        <td style="color:var(--info)">${s.windage>=0?'+':''}${s.windage.toFixed(3)}</td>
         <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 // ── Export ──
@@ -4041,8 +4192,8 @@ window.exportTargetSession = async () => {
     distance: _tgt.distYds,
     distance_unit: _tgt.distUnit,
     scale_px_per_in: _tgt.scale,
-    poa: _tgt.poa,
-    impacts: _tgt.impacts,
+    groups: _tgt.groups,
+    impacts: _tgt.groups.flatMap(g=>g.impacts),
     stats: stats ? {
       group_size_in:    stats.groupSize,
       group_size_moa:   stats.groupMOA,
@@ -4053,6 +4204,7 @@ window.exportTargetSession = async () => {
       w_spread_in:      stats.wSpread,
       h_spread_in:      stats.hSpread,
       shots:            stats.shots,
+      groups:           stats.groups,
     } : null,
     image: _tgt.imageData,
   };
@@ -4089,15 +4241,22 @@ window.saveTargetSession = async () => {
     distance: _tgt.distYds,
     distance_unit: _tgt.distUnit,
     scale_px_per_in: _tgt.scale || null,
-    poa: _tgt.poa,
+    groups: _tgt.groups,
     scaleP1: _tgt.scaleP1,
     scaleP2: _tgt.scaleP2,
-    impacts: _tgt.impacts,
     image_data: _tgt.imageData,
     created_at: new Date().toISOString(),
-    stats_group_moa: stats ? +stats.groupMOA.toFixed(2) : null,
-    stats_mean_rad_moa: stats ? +stats.meanRadMOA.toFixed(2) : null,
-    stats_shot_count: _tgt.impacts.length,
+    stats_group_moa: stats ? +stats.aggregate.avgGroupMOA.toFixed(2) : null,
+    stats_mean_rad_moa: stats ? +stats.aggregate.avgMeanRadMOA.toFixed(2) : null,
+    stats_shot_count: stats ? stats.aggregate.totalShots : _tgt.groups.reduce((s,g)=>s+g.impacts.length,0),
+    stats_groups: stats ? stats.groups.map(g=>({
+      label:g.label, color:g.color,
+      group_moa:+g.groupMOA.toFixed(2), mean_rad_moa:+g.meanRadMOA.toFixed(2),
+      poi_windage_in:+g.centroid.windage.toFixed(3), poi_elevation_in:+g.centroid.elevation.toFixed(3),
+      shot_count:g.shots.length,
+    })) : [],
+    stats_avg_windage_in: stats ? +stats.aggregate.avgWindage.toFixed(3) : null,
+    stats_avg_elevation_in: stats ? +stats.aggregate.avgElevation.toFixed(3) : null,
   };
   if (_tgt.savedId) {
     record.id = _tgt.savedId;
@@ -4116,10 +4275,15 @@ window.loadTargetSession = async id => {
   _tgt.imageData = s.image_data;
   _tgt.image = null;
   _tgt.scale = s.scale_px_per_in;
-  _tgt.poa = s.poa;
   _tgt.scaleP1 = s.scaleP1;
   _tgt.scaleP2 = s.scaleP2;
-  _tgt.impacts = s.impacts || [];
+  if (s.groups && s.groups.length) {
+    _tgt.groups = s.groups;
+  } else {
+    _tgt.groups = [{ id:'g0', label:'G1', color:TGT_GROUP_COLORS[0], poa:s.poa||null, impacts:s.impacts||[] }];
+  }
+  _tgt.activeGroupId = _tgt.groups[0]?.id || 'g0';
+  _tgt.selectedGroupId = null; _tgt.selectedImpactIdx = -1;
   _tgt.batchId = s.batch_id || '';
   _tgt.rangeSessionId = s.range_session_id || '';
   _tgt.sessionName = s.session_name || '';
