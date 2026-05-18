@@ -269,6 +269,20 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .rc-velo-expected .rc-exp-delta.neg{color:var(--danger);}
 .rc-tap-hint{font-size:9px;color:var(--border2);margin-top:3px;letter-spacing:1px;}
 .rc-commit-bar{padding:14px 16px;background:var(--surface);border-top:2px solid var(--border);}
+.rc-sessions-bar{display:flex;gap:8px;overflow-x:auto;padding:10px 14px;
+  border-bottom:1px solid var(--border);background:var(--surface2);scrollbar-width:none;}
+.rc-sessions-bar::-webkit-scrollbar{display:none;}
+.rc-session-chip{flex:0 0 auto;min-width:88px;padding:8px 10px;border:1px solid var(--border);
+  background:var(--surface);cursor:pointer;text-align:left;touch-action:manipulation;}
+.rc-session-chip.active{border-color:var(--accent);}
+.rc-session-chip.new-sess{min-width:56px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;font-weight:700;color:var(--accent);border-style:dashed;}
+.rc-sess-date{font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted2);
+  font-family:'Barlow Condensed',sans-serif;}
+.rc-sess-fa{font-size:12px;font-weight:700;color:var(--ink);margin:2px 0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;}
+.rc-sess-shots{font-size:10px;color:var(--muted2);font-family:'Share Tech Mono',monospace;}
+.rc-session-chip.active .rc-sess-date,.rc-session-chip.active .rc-sess-fa{color:var(--accent);}
 .shot-detail-overlay{position:fixed;inset:0;background:var(--bg);
   z-index:250;display:flex;flex-direction:column;overflow:hidden;}
 .shot-detail-header{background:var(--surface);border-bottom:2px solid var(--border);
@@ -2460,7 +2474,51 @@ window.duplicateBatch = async batchId => {
 // ════════════════════════════════════════════════════
 //  RANGE CARD
 // ════════════════════════════════════════════════════
-let _rcSession = { batchId:null, cartridges:[], shots:[] };
+let _rcSession = {
+  batchId: null, cartridges: [], shots: [],
+  sessions: [], activeSessId: null,
+  _batch: null, _firearms: [],
+};
+
+function sortSessions(sessions) {
+  return [...sessions].sort((a,b)=>{
+    const da = a.range_date||'', db2 = b.range_date||'';
+    if (da !== db2) return da > db2 ? -1 : 1;
+    return (b.created_at||'') > (a.created_at||'') ? 1 : -1;
+  });
+}
+
+function migrateToRangeSessions(batch) {
+  if (batch.range_sessions) return batch.range_sessions;
+  if (!batch.shots || !batch.shots.length) return [];
+  return [{
+    id: (batch.loaded_date||Date.now()).toString().replace(/\D/g,'').slice(-8)||Date.now().toString(36),
+    range_date: batch.range_date || batch.loaded_date?.slice(0,10) || new Date().toISOString().slice(0,10),
+    range_time: '', firearm_id: batch.firearm_id||'',
+    range_firearm_label: batch.range_firearm_label||'',
+    range_barrel_length: batch.range_barrel_length||null,
+    conditions: batch.range_conditions||{temp_f:59,humidity:50,elevation:0},
+    shots: batch.shots, notes: '', created_at: batch.loaded_date||new Date().toISOString(),
+  }];
+}
+
+function buildSessionsBarHtml(batchId, sessions, activeSessId) {
+  const sorted = sortSessions(sessions);
+  const chips = sorted.map(s => {
+    const shotCount = (s.shots||[]).filter(sh=>sh.velocity>0).length;
+    const fa = s.firearm_id==='__manual__' ? (s.range_firearm_label||'Manual') : (s.firearm_id||'—');
+    const isActive = s.id === activeSessId;
+    return `<button class="rc-session-chip${isActive?' active':''}" onclick="switchRangeSession('${batchId}','${s.id}')">
+      <div class="rc-sess-date">${s.range_date||'—'}</div>
+      <div class="rc-sess-fa">${fa}</div>
+      <div class="rc-sess-shots">${shotCount} rds</div>
+    </button>`;
+  }).join('');
+  return `<div class="rc-sessions-bar" id="rc-sessions-bar">
+    ${chips}
+    <button class="rc-session-chip new-sess" onclick="newRangeSession('${batchId}')">+</button>
+  </div>`;
+}
 
 routes['range-card'] = async ({id}) => {
   if (!id){navigate('batches');return;}
