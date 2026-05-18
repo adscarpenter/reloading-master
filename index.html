@@ -4257,7 +4257,7 @@ function renderTargetStats() {
       </div>
       <div class="tgt-stat-box">
         <div class="tgt-stat-label">Avg POI Windage</div>
-        <div class="tgt-stat-val" style="color:var(--info)">${agg.avgWindage>=0?'+':''}${agg.avgWindage.toFixed(3)}<span class="tgt-stat-unit">in</span></div>
+        <div class="tgt-stat-val" style="color:var(--info)">${Math.abs(agg.avgWindage).toFixed(3)}<span class="tgt-stat-unit">in</span></div>
         <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace;margin-top:2px">${agg.avgWindage>=0?'RIGHT':'LEFT'}</div>
       </div>
       <div class="tgt-stat-box">
@@ -4270,20 +4270,20 @@ function renderTargetStats() {
   // Per-group breakdown (multi-group only)
   if (multiGroup) {
     html += `<div style="overflow-x:auto;margin-top:10px"><table class="tgt-shot-table">
-      <thead><tr><th>Grp</th><th>Shots</th><th>Grp MOA</th><th>MR MOA</th><th>Wind (in)</th><th>Elev (in)</th></tr></thead>
+      <thead><tr><th>Grp</th><th>Shots</th><th>Grp MOA</th><th>MR MOA</th><th>Windage</th><th>Elev (in)</th></tr></thead>
       <tbody>${gStats.map(g=>`<tr>
         <td><span style="display:inline-block;width:8px;height:8px;background:${g.color};border-radius:50%;margin-right:4px"></span>${g.label}</td>
         <td>${g.shots.length}</td>
         <td style="font-weight:700;color:var(--accent)">${g.groupMOA.toFixed(2)}</td>
         <td>${g.meanRadMOA.toFixed(2)}</td>
-        <td style="color:var(--info)">${g.centroid.windage>=0?'+':''}${g.centroid.windage.toFixed(3)}</td>
+        <td style="color:var(--info)">${Math.abs(g.centroid.windage).toFixed(3)} ${g.centroid.windage>=0?'R':'L'}</td>
         <td style="color:${g.centroid.elevation>=0?'var(--success)':'var(--danger)'}">${g.centroid.elevation>=0?'+':''}${g.centroid.elevation.toFixed(3)}</td>
       </tr>`).join('')}
       <tr style="border-top:2px solid var(--border);font-weight:700">
         <td>AVG</td><td>${agg.totalShots}</td>
         <td style="color:var(--accent)">${agg.avgGroupMOA.toFixed(2)}</td>
         <td>${agg.avgMeanRadMOA.toFixed(2)}</td>
-        <td style="color:var(--info)">${agg.avgWindage>=0?'+':''}${agg.avgWindage.toFixed(3)}</td>
+        <td style="color:var(--info)">${Math.abs(agg.avgWindage).toFixed(3)} ${agg.avgWindage>=0?'R':'L'}</td>
         <td style="color:${agg.avgElevation>=0?'var(--success)':'var(--danger)'}">${agg.avgElevation>=0?'+':''}${agg.avgElevation.toFixed(3)}</td>
       </tr></tbody>
     </table></div>`;
@@ -4294,10 +4294,10 @@ function renderTargetStats() {
     const s0 = gStats[0];
     html += `<div class="section-title">Shot Data — ${s0.shots.length} Impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>
     <div style="overflow-x:auto"><table class="tgt-shot-table">
-      <thead><tr><th>#</th><th>Dist (in)</th><th>Wind (in)</th><th>Elev (in)</th></tr></thead>
+      <thead><tr><th>#</th><th>Dist (in)</th><th>Windage</th><th>Elev (in)</th></tr></thead>
       <tbody>${s0.shots.map(s=>`<tr>
         <td>${s.num}</td><td>${s.dist.toFixed(3)}</td>
-        <td style="color:var(--info)">${s.windage>=0?'+':''}${s.windage.toFixed(3)}</td>
+        <td style="color:var(--info)">${Math.abs(s.windage).toFixed(3)} ${s.windage>=0?'R':'L'}</td>
         <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
