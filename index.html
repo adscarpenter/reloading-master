@@ -2677,7 +2677,7 @@ function sortSessions(sessions) {
 }
 
 function migrateToRangeSessions(batch) {
-  if (batch.range_sessions) return batch.range_sessions;
+  if (batch.range_sessions && batch.range_sessions.length) return batch.range_sessions;
   if (!batch.shots || !batch.shots.length) return [];
   return [{
     id: (batch.loaded_date||Date.now()).toString().replace(/\D/g,'').slice(-8)||Date.now().toString(36),
@@ -2723,6 +2723,16 @@ routes['range-card'] = async ({id}) => {
   // Init or reuse sessions (reuse preserves in-memory unsaved data when switching sessions)
   if (_rcSession.batchId !== id || !_rcSession.sessions.length) {
     const sessions = migrateToRangeSessions(batch);
+    // Auto-create first session for new batches so shots always have a home
+    if (!sessions.length) sessions.push({
+      id: Date.now().toString(36),
+      range_date: batch.range_date || new Date().toISOString().slice(0,10),
+      range_time: '', firearm_id: batch.firearm_id||'',
+      range_firearm_label: batch.range_firearm_label||'',
+      range_barrel_length: batch.range_barrel_length||null,
+      conditions: batch.range_conditions||{temp_f:59,humidity:50,elevation:0},
+      shots: [], notes: '', created_at: new Date().toISOString(),
+    });
     const sorted = sortSessions(sessions);
     _rcSession = {
       batchId: id, cartridges,
