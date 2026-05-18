@@ -2322,23 +2322,33 @@ function allBatchShots(batch) {
 function aggregateTgtStats(tgtSessions) {
   const groups = [];
   tgtSessions.forEach(t => {
+    const distYds = t.distance_unit === 'm' ? (t.distance||0) * 1.0936 : (t.distance||0);
+    const attach = g => ({ ...g, _distYds: distYds });
     if (t.stats_groups && t.stats_groups.length) {
-      groups.push(...t.stats_groups);
+      groups.push(...t.stats_groups.map(attach));
     } else if (t.stats_group_moa != null) {
-      groups.push({ label:'G1', group_moa:t.stats_group_moa, mean_rad_moa:t.stats_mean_rad_moa||0,
+      groups.push(attach({ label:'G1', group_moa:t.stats_group_moa, mean_rad_moa:t.stats_mean_rad_moa||0,
         poi_windage_in:t.stats_avg_windage_in||0, poi_elevation_in:t.stats_avg_elevation_in||0,
-        shot_count:t.stats_shot_count||0 });
+        shot_count:t.stats_shot_count||0 }));
     }
   });
   if (!groups.length) return null;
   const n = groups.length;
   const totalShots = groups.reduce((s,g)=>s+(g.shot_count||0), 0);
+  const inToMOA  = (v, d) => d > 0 ? v / (d * 1.0472 / 100) : 0;
+  const inToMRAD = (v, d) => d > 0 ? v / (d * 3.6 / 100) : 0;
+  const avgWindage      = groups.reduce((s,g)=>s+(g.poi_windage_in||0), 0) / n;
+  const avgElevation    = groups.reduce((s,g)=>s+(g.poi_elevation_in||0), 0) / n;
+  const avgWindageMOA   = groups.reduce((s,g)=>s+inToMOA(g.poi_windage_in||0, g._distYds||0), 0) / n;
+  const avgElevMOA      = groups.reduce((s,g)=>s+inToMOA(g.poi_elevation_in||0, g._distYds||0), 0) / n;
+  const avgWindageMRAD  = groups.reduce((s,g)=>s+inToMRAD(g.poi_windage_in||0, g._distYds||0), 0) / n;
+  const avgElevMRAD     = groups.reduce((s,g)=>s+inToMRAD(g.poi_elevation_in||0, g._distYds||0), 0) / n;
   return {
     groupCount: n, totalShots,
     avgGroupMOA:   groups.reduce((s,g)=>s+g.group_moa, 0) / n,
     avgMeanRadMOA: groups.reduce((s,g)=>s+(g.mean_rad_moa||0), 0) / n,
-    avgWindage:    groups.reduce((s,g)=>s+(g.poi_windage_in||0), 0) / n,
-    avgElevation:  groups.reduce((s,g)=>s+(g.poi_elevation_in||0), 0) / n,
+    avgWindage, avgElevation,
+    avgWindageMOA, avgElevMOA, avgWindageMRAD, avgElevMRAD,
   };
 }
 
@@ -2369,8 +2379,14 @@ async function renderChronoTab(batch) {
     html+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:10px 14px;gap:4px;background:var(--surface2);border:1px solid var(--border);margin-bottom:14px${velStats?';border-top:none':''}">
       <div><div class="s-label">AVG GROUP</div><div style="font-size:18px;font-weight:700;color:var(--accent);font-family:'Barlow Condensed',sans-serif;line-height:1.1">${allTgtAgg.avgGroupMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div></div>
       <div><div class="s-label">MEAN RAD</div><div style="font-size:18px;font-weight:700;font-family:'Barlow Condensed',sans-serif;line-height:1.1">${allTgtAgg.avgMeanRadMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div></div>
-      <div><div class="s-label">AVG WIND</div><div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--info);line-height:1.2">${allTgtAgg.avgWindage>=0?'+':''}${allTgtAgg.avgWindage.toFixed(3)}"</div></div>
-      <div><div class="s-label">AVG ELEV</div><div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:${allTgtAgg.avgElevation>=0?'var(--success)':'var(--danger)'};line-height:1.2">${allTgtAgg.avgElevation>=0?'+':''}${allTgtAgg.avgElevation.toFixed(3)}"</div></div>
+      <div><div class="s-label">AVG WIND</div>
+        <div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--info);line-height:1.2">${allTgtAgg.avgWindageMOA>=0?'+':''}${allTgtAgg.avgWindageMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div>
+        <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${allTgtAgg.avgWindageMRAD>=0?'+':''}${allTgtAgg.avgWindageMRAD.toFixed(2)} mil · ${allTgtAgg.avgWindage>=0?'+':''}${allTgtAgg.avgWindage.toFixed(3)}"</div>
+      </div>
+      <div><div class="s-label">AVG ELEV</div>
+        <div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:${allTgtAgg.avgElevMOA>=0?'var(--success)':'var(--danger)'};line-height:1.2">${allTgtAgg.avgElevMOA>=0?'+':''}${allTgtAgg.avgElevMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div>
+        <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${allTgtAgg.avgElevMRAD>=0?'+':''}${allTgtAgg.avgElevMRAD.toFixed(2)} mil · ${allTgtAgg.avgElevation>=0?'+':''}${allTgtAgg.avgElevation.toFixed(3)}"</div>
+      </div>
     </div>`;
   }
 
@@ -2416,7 +2432,9 @@ async function renderChronoTab(batch) {
         ${sessAgg?`<div style="padding:10px 14px">
           <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:3px">TARGET${tgtDist?' @ '+tgtDist:''}</div>
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${sessAgg.avgGroupMOA.toFixed(2)} <span style="font-size:11px;color:var(--muted2);font-weight:400">MOA avg${sessAgg.groupCount>1?' · '+sessAgg.groupCount+' grps':''}</span></div>
-          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:1px">MR ${sessAgg.avgMeanRadMOA.toFixed(2)} · W ${sessAgg.avgWindage>=0?'+':''}${sessAgg.avgWindage.toFixed(3)}" · E ${sessAgg.avgElevation>=0?'+':''}${sessAgg.avgElevation.toFixed(3)}"</div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:1px">MR ${sessAgg.avgMeanRadMOA.toFixed(2)} MOA</div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">W <span style="color:var(--info)">${sessAgg.avgWindageMOA>=0?'+':''}${sessAgg.avgWindageMOA.toFixed(2)} MOA / ${sessAgg.avgWindageMRAD>=0?'+':''}${sessAgg.avgWindageMRAD.toFixed(2)} mil</span></div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">E <span style="color:${sessAgg.avgElevMOA>=0?'var(--success)':'var(--danger)'}">${sessAgg.avgElevMOA>=0?'+':''}${sessAgg.avgElevMOA.toFixed(2)} MOA / ${sessAgg.avgElevMRAD>=0?'+':''}${sessAgg.avgElevMRAD.toFixed(2)} mil</span></div>
         </div>`:''}
       </div>`:''}
 
@@ -2440,7 +2458,9 @@ async function renderChronoTab(batch) {
       <div class="card-header"><div class="marker"></div><h3>Unlinked Targets</h3></div>
       ${boAgg?`<div style="padding:8px 14px;border-bottom:1px solid var(--border)">
         <span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${boAgg.avgGroupMOA.toFixed(2)} MOA</span>
-        <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-left:8px">MR ${boAgg.avgMeanRadMOA.toFixed(2)} · W ${boAgg.avgWindage>=0?'+':''}${boAgg.avgWindage.toFixed(3)}" · E ${boAgg.avgElevation>=0?'+':''}${boAgg.avgElevation.toFixed(3)}"</span>
+        <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-left:8px">MR ${boAgg.avgMeanRadMOA.toFixed(2)}</span>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:3px">W <span style="color:var(--info)">${boAgg.avgWindageMOA>=0?'+':''}${boAgg.avgWindageMOA.toFixed(2)} MOA / ${boAgg.avgWindageMRAD>=0?'+':''}${boAgg.avgWindageMRAD.toFixed(2)} mil</span> · ${boAgg.avgWindage>=0?'+':''}${boAgg.avgWindage.toFixed(3)}"</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">E <span style="color:${boAgg.avgElevMOA>=0?'var(--success)':'var(--danger)'}">${boAgg.avgElevMOA>=0?'+':''}${boAgg.avgElevMOA.toFixed(2)} MOA / ${boAgg.avgElevMRAD>=0?'+':''}${boAgg.avgElevMRAD.toFixed(2)} mil</span> · ${boAgg.avgElevation>=0?'+':''}${boAgg.avgElevation.toFixed(3)}"</div>
       </div>`:''}
       <div style="padding:8px 14px">${batchOnlyTgts.map(tgtRowHtml).join('')}</div>
     </div>`;
