@@ -370,7 +370,7 @@ textarea.form-control{min-height:80px;resize:vertical;}
 @media print{#bottom-nav,#top-bar .action-btn,.tabs,.btn,.back-btn{display:none !important;}#view{padding:0;}}
 #target-canvas-wrap{position:relative;width:100%;touch-action:none;
   background:#1a1a1a;overflow:hidden;border:1px solid var(--border);
-  min-height:240px;max-height:62vh;cursor:grab;user-select:none;}
+  min-height:240px;max-height:75vh;cursor:grab;user-select:none;}
 #target-canvas-wrap.is-panning{cursor:grabbing;}
 #target-canvas{display:block;transform-origin:0 0;will-change:transform;}
 #tgt-reticle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
@@ -3767,9 +3767,11 @@ function clampPan() {
   const visW = canvas.offsetWidth * _tgt.zoom;
   const visH = canvas.offsetHeight * _tgt.zoom;
   const ww = wrap.clientWidth, wh = wrap.clientHeight;
-  const K = 60;
-  _tgt.panX = Math.min(K, Math.max(ww - visW - K, _tgt.panX));
-  _tgt.panY = Math.min(K, Math.max(wh - visH - K, _tgt.panY));
+  // Allow the image edge to reach the viewport centre so every pixel is easily tappable
+  const KX = Math.round(ww * 0.5);
+  const KY = Math.round(wh * 0.5);
+  _tgt.panX = Math.min(KX, Math.max(ww - visW - KX, _tgt.panX));
+  _tgt.panY = Math.min(KY, Math.max(wh - visH - KY, _tgt.panY));
 }
 function applyZoom(factor, mx, my) {
   const newZoom = Math.min(12, Math.max(1, _tgt.zoom * factor));
