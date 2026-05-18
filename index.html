@@ -2119,7 +2119,7 @@ routes['batch'] = async ({id}) => {
   `);
   renderRecipeTab(batch);
   renderLoadTable(batch);
-  renderChronoTab(batch);
+  renderChronoTab(batch); // async, fire-and-forget is fine here
 };
 window.switchTab = (btn,tabId) => {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -2311,11 +2311,14 @@ function allBatchShots(batch) {
   return all;
 }
 
-function renderChronoTab(batch) {
+async function renderChronoTab(batch) {
   const el=document.getElementById('tab-chrono'); if (!el) return;
   const sessions=sortSessions(migrateToRangeSessions(batch));
   const allValid=allBatchShots(batch);
   const stats=allValid.length?calcStats(allValid.map(s=>s.velocity)):null;
+
+  // Load target sessions linked to this batch
+  const allTgtSess=(await dbGetAll('target_sessions')).filter(t=>t.batch_id===batch.id);
 
   if (!allValid.length) {
     el.innerHTML=`<p class="text-muted" style="font-size:14px;margin-bottom:16px;font-family:'Share Tech Mono',monospace">// NO VELOCITY DATA — USE RANGE CARD TO RECORD SHOTS</p>`;
@@ -2324,11 +2327,26 @@ function renderChronoTab(batch) {
     return;
   }
 
+  const activeSessCount=sessions.filter(s=>(s.shots||[]).some(sh=>sh?.velocity>0)).length;
+
   let html=`<div class="stat-grid" style="margin-bottom:14px">
     <div class="stat-box hi"><div class="s-label">AVG</div><div class="s-val">${Math.round(stats.avg)}</div><div class="s-unit">FPS</div></div>
     <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" style="color:var(--success)">${fmt(stats.sd,1)}</div><div class="s-unit">FPS</div></div>
     <div class="stat-box"><div class="s-label">ES</div><div class="s-val">${fmt(stats.es,1)}</div><div class="s-unit">FPS</div></div>
   </div>`;
+
+  const tgtRowHtml=t=>{
+    const dateLabel=[t.range_date,t.range_time].filter(Boolean).join(' · ');
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--border)" onclick="loadTargetSession(${t.id})">
+      <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${dateLabel||'—'} · ${t.distance}${t.distance_unit}</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${t.stats_group_moa!=null?`<span style="font-size:13px;font-weight:700;font-family:'Barlow Condensed',sans-serif;color:var(--ink)">${t.stats_group_moa} MOA</span>`:''}
+        ${t.stats_mean_rad_moa!=null?`<span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">MR ${t.stats_mean_rad_moa}</span>`:''}
+        <span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">${t.stats_shot_count||0} rds</span>
+        <span style="color:var(--accent);font-size:13px">→</span>
+      </div>
+    </div>`;
+  };
 
   sessions.forEach((sess,si)=>{
     const sessRows=[];
@@ -2337,15 +2355,26 @@ function renderChronoTab(batch) {
     const ss=calcStats(sessRows.map(s=>s.velocity));
     const label=sess.range_date?fmtDate(sess.range_date):`Session ${si+1}`;
     const fa=sess.firearm_id&&sess.firearm_id!=='__manual__'?` · ${sess.range_firearm_label||sess.firearm_id}`:sess.range_firearm_label?` · ${sess.range_firearm_label}`:'';
+    const sessTgts=allTgtSess.filter(t=>t.range_session_id===sess.id);
     html+=`<div class="card" style="margin-bottom:10px">
       <div class="card-header"><div class="marker"></div><h3>${label}${fa}</h3>${si===0?mkBtnSm('CLEAR','btn-secondary',`clearShots('${batch.id}')`, 'trash'):''}</div>
-      ${sessions.filter(s=>(s.shots||[]).some(sh=>sh?.velocity>0)).length>1?`<div style="padding:6px 14px;border-bottom:1px solid var(--border);font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">AVG <strong style="color:var(--ink)">${Math.round(ss.avg)}</strong> · SD <strong style="color:var(--success)">${fmt(ss.sd,1)}</strong> · ES <strong style="color:var(--ink)">${fmt(ss.es,1)}</strong> FPS</div>`:''}
+      ${activeSessCount>1?`<div style="padding:6px 14px;border-bottom:1px solid var(--border);font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">AVG <strong style="color:var(--ink)">${Math.round(ss.avg)}</strong> · SD <strong style="color:var(--success)">${fmt(ss.sd,1)}</strong> · ES <strong style="color:var(--ink)">${fmt(ss.es,1)}</strong> FPS</div>`:''}
       <div style="padding:0 0 4px"><table class="shot-table">
         <thead><tr><th>#</th><th>FPS</th><th>Δ AVG</th><th>Notes</th></tr></thead>
         <tbody>${sessRows.map(s=>{ const d=ss?s.velocity-ss.avg:0; return `<tr><td>${s.num}</td><td style="font-weight:700;color:var(--text)">${Math.round(s.velocity)}</td><td class="${d>=0?'delta-pos':'delta-neg'}">${d>=0?'+':''}${fmt(d,1)}</td><td style="font-size:12px;color:var(--muted2)">${s.field_notes||''}</td></tr>`; }).join('')}</tbody>
       </table></div>
+      ${sessTgts.length?`<div style="padding:8px 14px;border-top:1px solid var(--border)"><div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:4px">TARGET ANALYSIS</div>${sessTgts.map(tgtRowHtml).join('')}</div>`:''}
     </div>`;
   });
+
+  // Targets linked to batch but not a specific session
+  const batchOnlyTgts=allTgtSess.filter(t=>!t.range_session_id);
+  if (batchOnlyTgts.length) {
+    html+=`<div class="card" style="margin-bottom:10px">
+      <div class="card-header"><div class="marker"></div><h3>Batch Targets</h3></div>
+      <div style="padding:8px 14px">${batchOnlyTgts.map(tgtRowHtml).join('')}</div>
+    </div>`;
+  }
 
   el.innerHTML=html;
   el.innerHTML+=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>
@@ -2355,7 +2384,7 @@ window.clearShots = async batchId => {
   if (!confirm_('Clear all shot data?')) return;
   const batch=await dbGet('batches',batchId);
   batch.shots=[]; batch.range_sessions=[]; batch.range_date=null;
-  await dbPut('batches',batch); renderChronoTab(batch); toast('SHOTS CLEARED');
+  await dbPut('batches',batch); await renderChronoTab(batch); toast('SHOTS CLEARED');
 };
 
 async function renderDropTab(batch) {
@@ -3272,7 +3301,7 @@ let _tgt = {
   image: null, imageData: null, scale: null, poa: null, impacts: [],
   distYds: 100, distUnit: 'yds', batchId: '', sessionName: '',
   rangeDate: new Date().toISOString().slice(0,10),
-  rangeTime: '', firearmdId: '', savedId: null,
+  rangeTime: '', firearmdId: '', savedId: null, rangeSessionId: '',
   mode: 'scale1', impactSize: 'md', dragType: null,
   scaleP1: null, scaleP2: null, selectedIdx: -1,
   dragging: false, dragOffsetX: 0, dragOffsetY: 0,
@@ -3327,7 +3356,7 @@ register('target', async () => {
           <div class="form-group" style="margin-bottom:0">
             <label>Link to Batch</label>
             <select class="form-control" id="tgt-batch"
-              onchange="_tgt.batchId=this.value;document.getElementById('tgt-name-wrap').style.display=this.value?'none':''">
+              onchange="onTgtBatchChange(this.value)">
               <option value="">— None —</option>${batchOpts}
             </select>
           </div>
@@ -3337,6 +3366,7 @@ register('target', async () => {
               placeholder="e.g. 100yd zero — AM" oninput="_tgt.sessionName=this.value">
           </div>
         </div>
+        <div id="tgt-sess-link-wrap" style="margin-top:10px"></div>
       </div>
     </div>
 
@@ -3420,6 +3450,7 @@ register('target', async () => {
   `);
 
   renderTargetSessionsList();
+  if (_tgt.batchId) onTgtBatchChange(_tgt.batchId);
 
   if (_tgt.imageData) {
     initTargetCanvas();
@@ -4050,6 +4081,7 @@ window.saveTargetSession = async () => {
   const stats = calcTargetStats();
   const record = {
     batch_id: _tgt.batchId || null,
+    range_session_id: _tgt.rangeSessionId || null,
     firearm_id: _tgt.firearmdId || null,
     session_name: _tgt.sessionName || null,
     range_date: _tgt.rangeDate,
@@ -4089,6 +4121,7 @@ window.loadTargetSession = async id => {
   _tgt.scaleP2 = s.scaleP2;
   _tgt.impacts = s.impacts || [];
   _tgt.batchId = s.batch_id || '';
+  _tgt.rangeSessionId = s.range_session_id || '';
   _tgt.sessionName = s.session_name || '';
   _tgt.rangeDate = s.range_date || new Date().toISOString().slice(0,10);
   _tgt.rangeTime = s.range_time || '';
@@ -4098,6 +4131,31 @@ window.loadTargetSession = async id => {
   _tgt.savedId = s.id;
   _tgt.mode = 'impact'; _tgt.panX = 0; _tgt.panY = 0; _tgt.zoom = 1;
   navigate('target');
+};
+
+window.onTgtBatchChange = async val => {
+  _tgt.batchId = val;
+  _tgt.rangeSessionId = '';
+  const nameWrap = document.getElementById('tgt-name-wrap');
+  if (nameWrap) nameWrap.style.display = val ? 'none' : '';
+  const wrap = document.getElementById('tgt-sess-link-wrap');
+  if (!wrap) return;
+  if (!val) { wrap.innerHTML = ''; return; }
+  const batch = await dbGet('batches', val);
+  if (!batch) { wrap.innerHTML = ''; return; }
+  const sessions = sortSessions(migrateToRangeSessions(batch));
+  if (!sessions.length) { wrap.innerHTML = ''; return; }
+  const opts = sessions.map(s => {
+    const n = (s.shots||[]).filter(sh=>sh?.velocity>0).length;
+    const label = `${s.range_date||'—'} · ${n} shots${s.firearm_id&&s.firearm_id!=='__manual__'?' · '+s.firearm_id:''}`;
+    return `<option value="${s.id}" ${s.id===_tgt.rangeSessionId?'selected':''}>${label}</option>`;
+  }).join('');
+  wrap.innerHTML = `<div class="form-row"><div class="form-group" style="margin-bottom:0">
+    <label>Range Session</label>
+    <select class="form-control" id="tgt-range-sess" onchange="_tgt.rangeSessionId=this.value">
+      <option value="">— Batch only —</option>${opts}
+    </select>
+  </div></div>`;
 };
 
 window.deleteTargetSession = async (id, e) => {
@@ -4142,12 +4200,17 @@ async function renderTargetSessionsList() {
 
   const rows = filtered.map(s => {
     const dateStr = [s.range_date, s.range_time].filter(Boolean).join(' · ');
-    const faStr = s.firearm_id || (s.batch_id ? `Batch: ${s.batch_id}` : '—');
+    const ctxParts = [s.firearm_id||null, s.batch_id||null].filter(Boolean);
+    const ctxStr = ctxParts.join(' · ') || '—';
+    const statStr = s.stats_group_moa!=null ? `${s.stats_group_moa} MOA` : '';
     const isCur = s.id === _tgt.savedId;
     return `<div class="tgt-sess-row${isCur?' active':''}" onclick="loadTargetSession(${s.id})" style="${isCur?'border-color:var(--accent)':''}">
       <div class="tgt-sess-main">
-        <div class="tgt-sess-date">${dateStr||'—'}</div>
-        <div class="tgt-sess-fa">${faStr}</div>
+        <div class="tgt-sess-date" style="display:flex;justify-content:space-between;align-items:baseline">
+          <span>${dateStr||'—'}</span>
+          ${statStr?`<span style="font-size:13px;font-weight:700;font-family:'Barlow Condensed',sans-serif;color:var(--accent)">${statStr}</span>`:''}
+        </div>
+        <div class="tgt-sess-fa">${ctxStr}</div>
       </div>
       <div class="tgt-sess-del" onclick="deleteTargetSession(${s.id},event)" title="Delete">✕</div>
     </div>`;
