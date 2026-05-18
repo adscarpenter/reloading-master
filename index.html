@@ -1562,6 +1562,11 @@ async function renderBatchForm(batch) {
           <input class="form-control" id="b-fac-mv" type="number" inputmode="numeric" placeholder="e.g. 2750" value="${b.factory_mv_adv||''}">
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label>Rounds per Box</label>
+          <input class="form-control" id="b-fac-qty" type="number" inputmode="numeric" min="1" placeholder="e.g. 20" value="${b.factory_box_qty||''}">
+        </div>
+      </div>
     </div>
 
     <div class="section-title">Chambering</div>
@@ -2086,13 +2091,18 @@ function _collectBatchFields(isNew) {
     factory_product: document.getElementById('b-fac-product')?.value.trim()||null,
     factory_lot:     document.getElementById('b-fac-lot')?.value.trim()||null,
     factory_mv_adv:  parseFloat(document.getElementById('b-fac-mv')?.value)||null,
+    factory_box_qty: parseInt(document.getElementById('b-fac-qty')?.value)||null,
   };
 }
 window.saveBatch = async () => {
   const fields=_collectBatchFields(true);
-  if (!fields.chambering){toast('CHAMBERING REQUIRED','error');return;}
-  if (!fields.is_factory&&!fields.bullet){toast('BULLET REQUIRED','error');return;}
-  if (!fields.is_factory&&!fields.powder){toast('POWDER REQUIRED FOR HANDLOADS','error');return;}
+  if (fields.is_factory){
+    if (!fields.factory_mfr||!fields.factory_product){toast('MANUFACTURER & PRODUCT REQUIRED','error');return;}
+  } else {
+    if (!fields.chambering){toast('CHAMBERING REQUIRED','error');return;}
+    if (!fields.bullet){toast('BULLET REQUIRED','error');return;}
+    if (!fields.powder){toast('POWDER REQUIRED','error');return;}
+  }
   const chargeStr=fields.charge_min?`${fields.charge_min}/${fields.charge_max}`:fields.charge_fixed;
   const facLabel=fields.is_factory?[fields.factory_mfr,fields.factory_product].filter(Boolean).join('-'):'';
   const bulletInv=await getBulletData(fields.bullet);
@@ -2109,9 +2119,13 @@ window.updateBatch = async batchId => {
   const batch=await dbGet('batches',batchId);
   if (!batch) return;
   const fields=_collectBatchFields(false);
-  if (!fields.chambering){toast('CHAMBERING REQUIRED','error');return;}
-  if (!fields.is_factory&&!fields.bullet){toast('BULLET REQUIRED','error');return;}
-  if (!fields.is_factory&&!fields.powder){toast('POWDER REQUIRED FOR HANDLOADS','error');return;}
+  if (fields.is_factory){
+    if (!fields.factory_mfr||!fields.factory_product){toast('MANUFACTURER & PRODUCT REQUIRED','error');return;}
+  } else {
+    if (!fields.chambering){toast('CHAMBERING REQUIRED','error');return;}
+    if (!fields.bullet){toast('BULLET REQUIRED','error');return;}
+    if (!fields.powder){toast('POWDER REQUIRED','error');return;}
+  }
   Object.assign(batch, fields);
   await dbPut('batches',batch); toast('BATCH UPDATED','success'); navigate('batch/'+batchId);
 };
