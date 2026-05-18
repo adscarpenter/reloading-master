@@ -2090,7 +2090,8 @@ function _collectBatchFields(isNew) {
 }
 window.saveBatch = async () => {
   const fields=_collectBatchFields(true);
-  if (!fields.chambering||!fields.bullet){toast('CHAMBERING & BULLET REQUIRED','error');return;}
+  if (!fields.chambering){toast('CHAMBERING REQUIRED','error');return;}
+  if (!fields.is_factory&&!fields.bullet){toast('BULLET REQUIRED','error');return;}
   if (!fields.is_factory&&!fields.powder){toast('POWDER REQUIRED FOR HANDLOADS','error');return;}
   const chargeStr=fields.charge_min?`${fields.charge_min}/${fields.charge_max}`:fields.charge_fixed;
   const facLabel=fields.is_factory?[fields.factory_mfr,fields.factory_product].filter(Boolean).join('-'):'';
@@ -2108,7 +2109,8 @@ window.updateBatch = async batchId => {
   const batch=await dbGet('batches',batchId);
   if (!batch) return;
   const fields=_collectBatchFields(false);
-  if (!fields.chambering||!fields.bullet){toast('CHAMBERING & BULLET REQUIRED','error');return;}
+  if (!fields.chambering){toast('CHAMBERING REQUIRED','error');return;}
+  if (!fields.is_factory&&!fields.bullet){toast('BULLET REQUIRED','error');return;}
   if (!fields.is_factory&&!fields.powder){toast('POWDER REQUIRED FOR HANDLOADS','error');return;}
   Object.assign(batch, fields);
   await dbPut('batches',batch); toast('BATCH UPDATED','success'); navigate('batch/'+batchId);
