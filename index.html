@@ -4049,12 +4049,12 @@ window.newTargetSession = () => {
     if (!confirm_('Start new target? Current marks are unsaved and will be lost.')) return;
   }
   // Keep session context, reset image + analysis
-  const keep = { batchId:_tgt.batchId, rangeSessionId:_tgt.rangeSessionId,
-    firearmdId:_tgt.firearmdId, rangeDate:_tgt.rangeDate, rangeTime:_tgt.rangeTime,
-    distYds:_tgt.distYds, distUnit:_tgt.distUnit };
+  const keep = { firearmdId:_tgt.firearmdId, rangeDate:_tgt.rangeDate,
+    rangeTime:_tgt.rangeTime, distYds:_tgt.distYds, distUnit:_tgt.distUnit };
   Object.assign(_tgt, keep, {
     image:null, imageData:null, scale:null, scaleP1:null, scaleP2:null,
-    savedId:null, mode:'scale1', panX:0, panY:0, zoom:1,
+    savedId:null, batchId:'', rangeSessionId:'', sessionName:'',
+    mode:'scale1', panX:0, panY:0, zoom:1,
     groups:[{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}],
     activeGroupId:'g0', selectedGroupId:null, selectedImpactIdx:-1,
   });
