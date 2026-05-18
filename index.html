@@ -1564,12 +1564,14 @@ async function renderBatchForm(batch) {
       </div>
     </div>
 
-    <div class="section-title">Chambering & Components</div>
+    <div class="section-title">Chambering</div>
     <div class="form-group"><label>Chambering *</label>
       <select class="form-control" id="b-chambering" onchange="updateBatchNamePreview()">
         <option value="">— Select —</option>${chamberOpts}
       </select>
     </div>
+
+    <div id="b-bullet-wrap" style="${b.is_factory?'display:none':''}">
     <div class="form-group"><label>Bullet *</label>
       <select class="form-control" id="b-bullet" onchange="onBatchBulletChange()">
         <option value="">— Select —</option>${selOpt(bullets,b.bullet)}
@@ -1583,6 +1585,7 @@ async function renderBatchForm(batch) {
         <div style="display:flex;gap:20px;flex-wrap:wrap" id="b-bullet-ref-data"></div>
       </div>
     </div>
+    </div><!-- /b-bullet-wrap -->
 
     <div id="hl-fields" style="${b.is_factory?'display:none':''}">
     <div class="form-row">
@@ -1667,6 +1670,7 @@ async function renderBatchForm(batch) {
     </div><!-- /hl-fields -->
 
     <!-- PER-RIFLE SEATING SECTION -->
+    <div id="b-seating-section" style="${b.is_factory?'display:none':''}">
     <div class="section-title">Seating / Jump & Measurements by Rifle</div>
     <div id="rifle-seating-list"></div>
     <button class="btn btn-secondary btn-sm" onclick="addRifleSeatingBlock()" style="margin-bottom:16px">${ICONS.plus} ADD FIREARM</button>
@@ -1683,7 +1687,9 @@ async function renderBatchForm(batch) {
       </div>
       <div id="jump-step-preview" style="font-size:12px;color:var(--accent);font-family:'Share Tech Mono',monospace;margin-bottom:12px"></div>
     </div>
+    </div><!-- /b-seating-section -->
 
+    <div id="b-rds-section" style="${b.is_factory?'display:none':''}">
     <div class="section-title">Reference Data (RDS)</div>
     <div class="form-row">
       <div class="form-group"><label>RDS Source</label><input class="form-control" id="b-rds" value="${b.rds_source||''}" placeholder="e.g. Hornady Manual"></div>
@@ -1697,6 +1703,7 @@ async function renderBatchForm(batch) {
       <div class="form-group"><label>RDS Charge Min (gr)</label><input class="form-control" id="b-rds-cmin" type="number" inputmode="decimal" step="0.1" value="${b.rds_charge_min??''}"></div>
       <div class="form-group"><label>RDS Charge Max (gr)</label><input class="form-control" id="b-rds-cmax" type="number" inputmode="decimal" step="0.1" value="${b.rds_charge_max??''}"></div>
     </div>
+    </div><!-- /b-rds-section -->
 
     <div class="form-group" style="margin-top:8px"><label>Loaded Date</label>
       <input class="form-control" id="b-ldate" type="date" value="${b.loaded_date||new Date().toISOString().slice(0,10)}">
@@ -1745,10 +1752,12 @@ window.toggleFactoryMode = () => {
   btn.style.boxShadow   = nowOn ? '1px 1px 0 rgba(29,42,53,.12)' : '';
   const lbl = document.getElementById('b-factory-label');
   if (lbl) lbl.textContent = nowOn ? '// manufacturer ammo — charges hidden' : '// toggle for factory/box ammo';
-  const hlFields = document.getElementById('hl-fields');
-  if (hlFields) hlFields.style.display = nowOn ? 'none' : '';
+  const hidden  = nowOn ? 'none' : '';
+  const visible = nowOn ? '' : 'none';
+  const ids = ['hl-fields','b-bullet-wrap','b-seating-section','b-rds-section'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = hidden; });
   const facFields = document.getElementById('factory-fields');
-  if (facFields) facFields.style.display = nowOn ? '' : 'none';
+  if (facFields) facFields.style.display = visible;
 };
 
 // ── Batch name live preview ──
