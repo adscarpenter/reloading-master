@@ -2530,21 +2530,36 @@ routes['range-card'] = async ({id}) => {
   document.getElementById('back-btn').onclick=()=>{ if (confirm_('Leave? Unsaved changes will be lost.')) navigate('batch/'+id); };
 
   const cartridges=generateCartridges(batch);
-  const existingShots=batch.shots||[];
   const isGrouped=batch.group_mode&&batch.group_mode!=='none';
 
-  // Init session
-  _rcSession = {
-    batchId: id,
-    cartridges,
-    shots: cartridges.map((_,i)=>{ const e=(batch.shots||[])[i]; return {velocity:e?.velocity||0,field_notes:e?.field_notes||''}; }),
-    _batch: batch,
-    _firearms: firearms,
-  };
+  // Init or reuse sessions (reuse preserves in-memory unsaved data when switching sessions)
+  if (_rcSession.batchId !== id || !_rcSession.sessions.length) {
+    const sessions = migrateToRangeSessions(batch);
+    const sorted = sortSessions(sessions);
+    _rcSession = {
+      batchId: id, cartridges,
+      sessions, activeSessId: sorted[0]?.id || null,
+      _batch: batch, _firearms: firearms,
+    };
+  } else {
+    _rcSession.cartridges = cartridges;
+    _rcSession._batch = batch;
+    _rcSession._firearms = firearms;
+  }
 
-  // Determine if batch is in manual-entry mode: firearm_id doesn't match any registered firearm
-  const matchedFirearm = firearms.find(f=>f.name===batch.firearm_id) || null;
-  const isManualMode = !matchedFirearm && (batch.range_barrel_length!=null || firearms.length===0 || batch.firearm_id==='__manual__');
+  const activeSess = _rcSession.sessions.find(s=>s.id===_rcSession.activeSessId) || _rcSession.sessions[0] || null;
+  const existingShots = activeSess?.shots || [];
+  _rcSession.shots = cartridges.map((_,i)=>{ const e=existingShots[i]; return {velocity:e?.velocity||0,field_notes:e?.field_notes||''}; });
+
+  // Resolve firearm from active session first, fall back to batch fields
+  const sessFirearmId = activeSess?.firearm_id || batch.firearm_id || '';
+  const sessBarrel    = activeSess?.range_barrel_length ?? batch.range_barrel_length ?? null;
+  const sessLabel     = activeSess?.range_firearm_label || batch.range_firearm_label || '';
+  const sessCond      = activeSess?.conditions || batch.range_conditions || {};
+  const sessDate      = activeSess?.range_date || batch.range_date || new Date().toISOString().slice(0,10);
+
+  const matchedFirearm = firearms.find(f=>f.name===sessFirearmId) || null;
+  const isManualMode = sessFirearmId==='__manual__' || (!matchedFirearm && (sessBarrel!=null || firearms.length===0));
   const seatingIds = (batch.rifle_seating||[]).map(rs=>rs.firearm_id).filter(Boolean);
   const primarySeatingFirearm = seatingIds.length ? firearms.find(f=>f.name===seatingIds[0]) : null;
   const currentFirearm = matchedFirearm || (!isManualMode ? (primarySeatingFirearm||(firearms.length?firearms[0]:null)) : null);
@@ -2556,9 +2571,8 @@ routes['range-card'] = async ({id}) => {
       return `<option value="${f.name}" ${currentFirearm&&f.name===currentFirearm.name?'selected':''}>${star}${f.name} (${bl})</option>`;
     }).join('');
 
-  // Effective firearm at initial render — used to compute EXP MV per row
   const effectiveFirearmAtRender = isManualMode
-    ? (batch.range_barrel_length!=null ? {name: batch.range_firearm_label||'Manual', barrel_length: batch.range_barrel_length} : null)
+    ? (sessBarrel!=null ? {name: sessLabel||'Manual', barrel_length: sessBarrel} : null)
     : currentFirearm;
 
   let shotRowsHtml='', lastGroup=null;
@@ -2591,6 +2605,9 @@ routes['range-card'] = async ({id}) => {
   render(`
     <div style="background:var(--surface);border:1px solid var(--border);overflow:hidden">
 
+      <!-- Sessions bar -->
+      ${buildSessionsBarHtml(id, _rcSession.sessions, _rcSession.activeSessId)}
+
       <div class="rc-session-header">
         <h2>${batch.id}</h2>
         <div class="rc-meta">${batch.load_dev_type}${isGrouped?' · '+batch.group_mode.toUpperCase()+' GROUPS':''} · ${cartridges.length} ROUNDS · ${fmtDate(batch.loaded_date)}</div>
@@ -2605,14 +2622,14 @@ routes['range-card'] = async ({id}) => {
           </select>
           <div id="rc-manual-fields" style="display:${isManualMode?'block':'none'}">
             <div class="rc-label" style="margin-top:8px">Label <span style="font-size:9px;color:var(--muted2);font-weight:600;letter-spacing:.5px">— OPTIONAL</span></div>
-            <input class="form-control" id="rc-manual-label" type="text" placeholder="Loaner, scratch build, etc" value="${isManualMode?(batch.range_firearm_label||''):''}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+            <input class="form-control" id="rc-manual-label" type="text" placeholder="Loaner, scratch build, etc" value="${sessLabel}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
             <div class="rc-label" style="margin-top:8px">Barrel Length (in) <span style="font-size:9px;color:var(--danger);font-weight:600;letter-spacing:.5px">— REQUIRED</span></div>
-            <input class="form-control" id="rc-manual-barrel" type="number" inputmode="decimal" step="0.5" value="${isManualMode?(batch.range_barrel_length??''):''}" oninput="onRangeBarrelChange()" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+            <input class="form-control" id="rc-manual-barrel" type="number" inputmode="decimal" step="0.5" value="${sessBarrel??''}" oninput="onRangeBarrelChange()" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
           </div>
         </div>
         <div style="padding:10px 14px">
           <div class="rc-label">Range Date</div>
-          <input class="form-control" id="rc-range-date" type="date" value="${batch.range_date||new Date().toISOString().slice(0,10)}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+          <input class="form-control" id="rc-range-date" type="date" value="${sessDate}" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
         </div>
       </div>
 
@@ -2630,15 +2647,15 @@ routes['range-card'] = async ({id}) => {
       <div class="rc-env-strip">
         <div class="rc-env-cell">
           <label>Temp °F</label>
-          <input id="rc-env-temp" type="number" inputmode="numeric" value="${batch.range_conditions?.temp_f||59}">
+          <input id="rc-env-temp" type="number" inputmode="numeric" value="${sessCond.temp_f??59}">
         </div>
         <div class="rc-env-cell">
           <label>Humidity %</label>
-          <input id="rc-env-hum" type="number" inputmode="numeric" value="${batch.range_conditions?.humidity||50}">
+          <input id="rc-env-hum" type="number" inputmode="numeric" value="${sessCond.humidity??50}">
         </div>
         <div class="rc-env-cell">
           <label>Elevation ft</label>
-          <input id="rc-env-elev" type="number" inputmode="numeric" value="${batch.range_conditions?.elevation||0}">
+          <input id="rc-env-elev" type="number" inputmode="numeric" value="${sessCond.elevation??0}">
         </div>
       </div>
 
@@ -2663,12 +2680,12 @@ routes['range-card'] = async ({id}) => {
       <!-- Commit -->
       <div class="rc-commit-bar">
         ${mkBtn('SAVE TO BATCH','btn-primary',`commitRangeSession('${id}')`, 'save')}
+        ${_rcSession.sessions.length>1?`<button class="btn btn-secondary" onclick="deleteRangeSession('${id}','${_rcSession.activeSessId}')" style="margin-top:8px;width:100%;color:var(--danger);border-color:rgba(255,107,66,.3)">${ICONS.trash} DELETE THIS SESSION</button>`:''}
       </div>
 
     </div>
   `);
 
-  // Use effective firearm so the RDS bar reflects any per-batch barrel override
   updateRangeRDSBar(batch, getEffectiveRangeFirearm());
   updateRangeLiveStats();
 };
@@ -2931,34 +2948,85 @@ window.commitRangeSession = async batchId => {
   });
   const validShots=shots.filter(s=>s.velocity>0);
   if (!validShots.length){toast('NO VELOCITIES ENTERED','error');return;}
+
   const rangeDate=document.getElementById('rc-range-date')?.value||new Date().toISOString().slice(0,10);
   const sel=document.getElementById('rc-firearm-sel');
+  let sessFirearmId='', sessLabel='', sessBarrel=null;
   if (sel) {
     if (sel.value === '__manual__') {
       const labelEl=document.getElementById('rc-manual-label');
       const blEl=document.getElementById('rc-manual-barrel');
-      const bl = blEl && blEl.value!=='' ? parseFloat(blEl.value) : NaN;
-      if (isNaN(bl) || bl<=0) { toast('BARREL LENGTH REQUIRED FOR MANUAL ENTRY','error'); return; }
-      batch.firearm_id = '';
-      batch.range_firearm_label = labelEl?.value?.trim() || '';
-      batch.range_barrel_length = bl;
+      const bl=blEl&&blEl.value!==''?parseFloat(blEl.value):NaN;
+      if (isNaN(bl)||bl<=0){toast('BARREL LENGTH REQUIRED FOR MANUAL ENTRY','error');return;}
+      sessFirearmId='__manual__'; sessLabel=labelEl?.value?.trim()||''; sessBarrel=bl;
     } else if (sel.value) {
-      batch.firearm_id = sel.value;
-      batch.range_firearm_label = '';
-      batch.range_barrel_length = null;
+      sessFirearmId=sel.value;
     }
   }
-  batch.range_conditions={
+  const conditions={
     temp_f:    parseFloat(document.getElementById('rc-env-temp')?.value)||59,
     humidity:  parseFloat(document.getElementById('rc-env-hum')?.value)||50,
     elevation: parseFloat(document.getElementById('rc-env-elev')?.value)||0,
   };
+
+  // Update active session with DOM data
+  const cur=_rcSession.sessions.find(s=>s.id===_rcSession.activeSessId);
+  if (cur) {
+    cur.shots=shots; cur.range_date=rangeDate; cur.firearm_id=sessFirearmId;
+    cur.range_firearm_label=sessLabel; cur.range_barrel_length=sessBarrel;
+    cur.conditions=conditions;
+  }
+
+  // Persist all sessions; keep batch.shots for backwards compat
+  batch.range_sessions=_rcSession.sessions;
   batch.shots=shots; batch.range_date=rangeDate;
+  if (_rcSession.sessions.length===1||!batch.firearm_id) {
+    if (sessFirearmId==='__manual__'){batch.firearm_id='';batch.range_firearm_label=sessLabel;batch.range_barrel_length=sessBarrel;}
+    else if (sessFirearmId){batch.firearm_id=sessFirearmId;batch.range_firearm_label='';batch.range_barrel_length=null;}
+  }
+  batch.range_conditions=conditions;
+
   await dbPut('batches',batch);
-  _rcSession={batchId:null,cartridges:[],shots:[]};
+  _rcSession={batchId:null,cartridges:[],shots:[],sessions:[],activeSessId:null,_batch:null,_firearms:[]};
   toast(`${validShots.length} SHOTS SAVED`,'success');
   if (batch.case_brand) promptFireCount(batch.case_brand);
   navigate('batch/'+batchId);
+};
+
+window.switchRangeSession = (batchId, sessId) => {
+  const cur=_rcSession.sessions.find(s=>s.id===_rcSession.activeSessId);
+  if (cur) cur.shots=[..._rcSession.shots];
+  _rcSession.activeSessId=sessId;
+  navigate('range-card/'+batchId);
+};
+
+window.newRangeSession = batchId => {
+  const cur=_rcSession.sessions.find(s=>s.id===_rcSession.activeSessId);
+  if (cur) cur.shots=[..._rcSession.shots];
+  const last=sortSessions(_rcSession.sessions)[0];
+  const newSess={
+    id: Date.now().toString(36),
+    range_date: new Date().toISOString().slice(0,10),
+    range_time: '',
+    firearm_id: last?.firearm_id||'',
+    range_firearm_label: last?.range_firearm_label||'',
+    range_barrel_length: last?.range_barrel_length||null,
+    conditions: last?.conditions?{...last.conditions}:{temp_f:59,humidity:50,elevation:0},
+    shots: [],
+    notes: '',
+    created_at: new Date().toISOString(),
+  };
+  _rcSession.sessions.push(newSess);
+  _rcSession.activeSessId=newSess.id;
+  navigate('range-card/'+batchId);
+};
+
+window.deleteRangeSession = async (batchId, sessId) => {
+  if (_rcSession.sessions.length<=1) return;
+  if (!confirm_('Delete this range session? This cannot be undone.')) return;
+  _rcSession.sessions=_rcSession.sessions.filter(s=>s.id!==sessId);
+  _rcSession.activeSessId=sortSessions(_rcSession.sessions)[0]?.id||null;
+  navigate('range-card/'+batchId);
 };
 
 window.showRangeCSVImport = batchId => {
