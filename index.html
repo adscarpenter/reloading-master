@@ -3374,7 +3374,7 @@ window.deleteTgtGroup = id => {
 };
 
 register('target', async () => {
-  setTitle('TARGET', false, `<button class="action-btn" onclick="saveTargetSession()" style="margin-right:6px">${ICONS.save} SAVE</button><button class="action-btn" onclick="exportTargetSession()">${ICONS.export} EXPORT</button>`);
+  setTitle('TARGET', false, `<button class="action-btn" onclick="newTargetSession()" style="margin-right:6px">${ICONS.plus} NEW</button><button class="action-btn" onclick="saveTargetSession()" style="margin-right:6px">${ICONS.save} SAVE</button><button class="action-btn" onclick="exportTargetSession()">${ICONS.export} EXPORT</button>`);
   const batches = await dbGetAll('batches');
   const batchOpts = batches.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
     .map(b=>`<option value="${b.id}" ${b.id===_tgt.batchId?'selected':''}>${b.id}</option>`).join('');
@@ -4043,6 +4043,24 @@ window.deleteSelectedImpact = () => {
   drawTargetCanvas();
   renderTargetStats();
 };
+window.newTargetSession = () => {
+  const hasUnsavedImpacts = !_tgt.savedId && _tgt.groups.some(g=>g.impacts.length>0);
+  if (hasUnsavedImpacts) {
+    if (!confirm_('Start new target? Current marks are unsaved and will be lost.')) return;
+  }
+  // Keep session context, reset image + analysis
+  const keep = { batchId:_tgt.batchId, rangeSessionId:_tgt.rangeSessionId,
+    firearmdId:_tgt.firearmdId, rangeDate:_tgt.rangeDate, rangeTime:_tgt.rangeTime,
+    distYds:_tgt.distYds, distUnit:_tgt.distUnit };
+  Object.assign(_tgt, keep, {
+    image:null, imageData:null, scale:null, scaleP1:null, scaleP2:null,
+    savedId:null, mode:'scale1', panX:0, panY:0, zoom:1,
+    groups:[{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}],
+    activeGroupId:'g0', selectedGroupId:null, selectedImpactIdx:-1,
+  });
+  navigate('target');
+};
+
 window.clearTargetSession = () => {
   if (!confirm_('Clear all marks? Image will remain.')) return;
   _tgt.groups = [{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}];
