@@ -2118,7 +2118,7 @@ routes['batch'] = async ({id}) => {
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab(this,'tab-recipe')">Recipe</button>
       <button class="tab-btn" onclick="switchTab(this,'tab-load')">Load Table</button>
-      <button class="tab-btn" onclick="switchTab(this,'tab-chrono')">Chrono</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-chrono')">Results</button>
     </div>
     <div class="tab-content active" id="tab-recipe"></div>
     <div class="tab-content" id="tab-load"></div>
@@ -2318,77 +2318,130 @@ function allBatchShots(batch) {
   return all;
 }
 
+// Aggregate target stats across all groups from multiple target sessions
+function aggregateTgtStats(tgtSessions) {
+  const groups = [];
+  tgtSessions.forEach(t => {
+    if (t.stats_groups && t.stats_groups.length) {
+      groups.push(...t.stats_groups);
+    } else if (t.stats_group_moa != null) {
+      groups.push({ label:'G1', group_moa:t.stats_group_moa, mean_rad_moa:t.stats_mean_rad_moa||0,
+        poi_windage_in:t.stats_avg_windage_in||0, poi_elevation_in:t.stats_avg_elevation_in||0,
+        shot_count:t.stats_shot_count||0 });
+    }
+  });
+  if (!groups.length) return null;
+  const n = groups.length;
+  const totalShots = groups.reduce((s,g)=>s+(g.shot_count||0), 0);
+  return {
+    groupCount: n, totalShots,
+    avgGroupMOA:   groups.reduce((s,g)=>s+g.group_moa, 0) / n,
+    avgMeanRadMOA: groups.reduce((s,g)=>s+(g.mean_rad_moa||0), 0) / n,
+    avgWindage:    groups.reduce((s,g)=>s+(g.poi_windage_in||0), 0) / n,
+    avgElevation:  groups.reduce((s,g)=>s+(g.poi_elevation_in||0), 0) / n,
+  };
+}
+
 async function renderChronoTab(batch) {
   const el=document.getElementById('tab-chrono'); if (!el) return;
   const sessions=sortSessions(migrateToRangeSessions(batch));
   const allValid=allBatchShots(batch);
-  const stats=allValid.length?calcStats(allValid.map(s=>s.velocity)):null;
-
-  // Load target sessions linked to this batch
+  const velStats=allValid.length?calcStats(allValid.map(s=>s.velocity)):null;
   const allTgtSess=(await dbGetAll('target_sessions')).filter(t=>t.batch_id===batch.id);
+  const allTgtAgg=aggregateTgtStats(allTgtSess);
 
-  if (!allValid.length) {
-    el.innerHTML=`<p class="text-muted" style="font-size:14px;margin-bottom:16px;font-family:'Share Tech Mono',monospace">// NO VELOCITY DATA — USE RANGE CARD TO RECORD SHOTS</p>`;
-    el.innerHTML+=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>
-      ${batch.range_date?`<p class="text-muted" style="font-size:12px;margin-top:10px;font-family:'Share Tech Mono',monospace">// RANGE DATE: ${fmtDate(batch.range_date)}</p>`:''}`;
+  if (!allValid.length && !allTgtSess.length) {
+    el.innerHTML=`<p class="text-muted" style="font-size:14px;margin-bottom:16px;font-family:'Share Tech Mono',monospace">// NO RANGE DATA — USE RANGE CARD TO RECORD SHOTS</p>`;
+    el.innerHTML+=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>`;
     return;
   }
 
-  const activeSessCount=sessions.filter(s=>(s.shots||[]).some(sh=>sh?.velocity>0)).length;
+  // ── Top-level combined summary ──
+  let html='';
+  if (velStats) {
+    html+=`<div class="stat-grid" style="margin-bottom:${allTgtAgg?'0':'14px'}">
+      <div class="stat-box hi"><div class="s-label">AVG</div><div class="s-val">${Math.round(velStats.avg)}</div><div class="s-unit">FPS</div></div>
+      <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" style="color:var(--success)">${fmt(velStats.sd,1)}</div><div class="s-unit">FPS</div></div>
+      <div class="stat-box"><div class="s-label">ES</div><div class="s-val">${fmt(velStats.es,1)}</div><div class="s-unit">FPS</div></div>
+    </div>`;
+  }
+  if (allTgtAgg) {
+    html+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:10px 14px;gap:4px;background:var(--surface2);border:1px solid var(--border);margin-bottom:14px${velStats?';border-top:none':''}">
+      <div><div class="s-label">AVG GROUP</div><div style="font-size:18px;font-weight:700;color:var(--accent);font-family:'Barlow Condensed',sans-serif;line-height:1.1">${allTgtAgg.avgGroupMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div></div>
+      <div><div class="s-label">MEAN RAD</div><div style="font-size:18px;font-weight:700;font-family:'Barlow Condensed',sans-serif;line-height:1.1">${allTgtAgg.avgMeanRadMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div></div>
+      <div><div class="s-label">AVG WIND</div><div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--info);line-height:1.2">${allTgtAgg.avgWindage>=0?'+':''}${allTgtAgg.avgWindage.toFixed(3)}"</div></div>
+      <div><div class="s-label">AVG ELEV</div><div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:${allTgtAgg.avgElevation>=0?'var(--success)':'var(--danger)'};line-height:1.2">${allTgtAgg.avgElevation>=0?'+':''}${allTgtAgg.avgElevation.toFixed(3)}"</div></div>
+    </div>`;
+  }
 
-  let html=`<div class="stat-grid" style="margin-bottom:14px">
-    <div class="stat-box hi"><div class="s-label">AVG</div><div class="s-val">${Math.round(stats.avg)}</div><div class="s-unit">FPS</div></div>
-    <div class="stat-box" style="border-top-color:var(--success)"><div class="s-label">SD</div><div class="s-val" style="color:var(--success)">${fmt(stats.sd,1)}</div><div class="s-unit">FPS</div></div>
-    <div class="stat-box"><div class="s-label">ES</div><div class="s-val">${fmt(stats.es,1)}</div><div class="s-unit">FPS</div></div>
-  </div>`;
-
+  // ── Target image row renderer ──
   const tgtRowHtml=t=>{
     const dateLabel=[t.range_date,t.range_time].filter(Boolean).join(' · ');
-    const grpsHtml = t.stats_groups && t.stats_groups.length > 1 ? `
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-        ${t.stats_groups.map(g=>`<span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:${g.color||'var(--muted2)'}">
-          ${g.label} ${g.group_moa?.toFixed(2)} MOA</span>`).join('')}
-      </div>` : '';
-    return `<div style="padding:6px 0;cursor:pointer;border-bottom:1px solid var(--border)" onclick="loadTargetSession(${t.id})">
-      <div style="display:flex;align-items:center;justify-content:space-between">
+    const grpsHtml=t.stats_groups&&t.stats_groups.length>1?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:3px">${t.stats_groups.map(g=>`<span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:${g.color||'var(--muted2)'}">${g.label} ${g.group_moa?.toFixed(2)} MOA</span>`).join('')}</div>`:'';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;cursor:pointer;border-bottom:1px solid var(--border)" onclick="loadTargetSession(${t.id})">
+      <div>
         <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${dateLabel||'—'} · ${t.distance}${t.distance_unit}</div>
-        <div style="display:flex;align-items:center;gap:10px">
-          ${t.stats_group_moa!=null?`<span style="font-size:13px;font-weight:700;font-family:'Barlow Condensed',sans-serif;color:var(--ink)">AVG ${t.stats_group_moa} MOA</span>`:''}
-          ${t.stats_mean_rad_moa!=null?`<span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">MR ${t.stats_mean_rad_moa}</span>`:''}
-          ${t.stats_avg_windage_in!=null?`<span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">W ${t.stats_avg_windage_in>=0?'+':''}${t.stats_avg_windage_in}″</span>`:''}
-          ${t.stats_avg_elevation_in!=null?`<span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">E ${t.stats_avg_elevation_in>=0?'+':''}${t.stats_avg_elevation_in}″</span>`:''}
-          <span style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">${t.stats_shot_count||0} rds</span>
-          <span style="color:var(--accent);font-size:13px">→</span>
-        </div>
+        ${grpsHtml}
       </div>
-      ${grpsHtml}
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px">
+        ${t.stats_group_moa!=null?`<span style="font-size:13px;font-weight:700;font-family:'Barlow Condensed',sans-serif;color:var(--ink)">${t.stats_group_moa} MOA</span>`:''}
+        ${t.stats_mean_rad_moa!=null?`<span style="font-size:10px;color:var(--muted2);font-family:'Share Tech Mono',monospace">MR ${t.stats_mean_rad_moa}</span>`:''}
+        <span style="color:var(--accent);font-size:13px">→</span>
+      </div>
     </div>`;
   };
 
+  // ── Per-session cards ──
   sessions.forEach((sess,si)=>{
     const sessRows=[];
     (sess.shots||[]).forEach((sh,idx)=>{ if (sh?.velocity>0) sessRows.push({num:idx+1,velocity:sh.velocity,field_notes:sh.field_notes||''}); });
-    if (!sessRows.length) return;
-    const ss=calcStats(sessRows.map(s=>s.velocity));
+    const sessTgts=allTgtSess.filter(t=>t.range_session_id===sess.id);
+    if (!sessRows.length && !sessTgts.length) return;
+
+    const ss=sessRows.length?calcStats(sessRows.map(s=>s.velocity)):null;
+    const sessAgg=aggregateTgtStats(sessTgts);
+    const tgtDist=sessTgts[0]?`${sessTgts[0].distance} ${sessTgts[0].distance_unit}`:'';
     const label=sess.range_date?fmtDate(sess.range_date):`Session ${si+1}`;
     const fa=sess.firearm_id&&sess.firearm_id!=='__manual__'?` · ${sess.range_firearm_label||sess.firearm_id}`:sess.range_firearm_label?` · ${sess.range_firearm_label}`:'';
-    const sessTgts=allTgtSess.filter(t=>t.range_session_id===sess.id);
+
     html+=`<div class="card" style="margin-bottom:10px">
       <div class="card-header"><div class="marker"></div><h3>${label}${fa}</h3>${si===0?mkBtnSm('CLEAR','btn-secondary',`clearShots('${batch.id}')`, 'trash'):''}</div>
-      ${activeSessCount>1?`<div style="padding:6px 14px;border-bottom:1px solid var(--border);font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">AVG <strong style="color:var(--ink)">${Math.round(ss.avg)}</strong> · SD <strong style="color:var(--success)">${fmt(ss.sd,1)}</strong> · ES <strong style="color:var(--ink)">${fmt(ss.es,1)}</strong> FPS</div>`:''}
-      <div style="padding:0 0 4px"><table class="shot-table">
+
+      ${ss||sessAgg?`<div style="display:grid;grid-template-columns:${ss&&sessAgg?'1fr 1fr':'1fr'};border-bottom:1px solid var(--border)">
+        ${ss?`<div style="padding:10px 14px${sessAgg?';border-right:1px solid var(--border)':''}">
+          <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:3px">VELOCITY</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--ink)">${Math.round(ss.avg)} <span style="font-size:11px;color:var(--muted2);font-weight:400">fps</span></div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:1px">SD <strong style="color:var(--success)">${fmt(ss.sd,1)}</strong> · ES <strong>${fmt(ss.es,1)}</strong></div>
+        </div>`:''}
+        ${sessAgg?`<div style="padding:10px 14px">
+          <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:3px">TARGET${tgtDist?' @ '+tgtDist:''}</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${sessAgg.avgGroupMOA.toFixed(2)} <span style="font-size:11px;color:var(--muted2);font-weight:400">MOA avg${sessAgg.groupCount>1?' · '+sessAgg.groupCount+' grps':''}</span></div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:1px">MR ${sessAgg.avgMeanRadMOA.toFixed(2)} · W ${sessAgg.avgWindage>=0?'+':''}${sessAgg.avgWindage.toFixed(3)}" · E ${sessAgg.avgElevation>=0?'+':''}${sessAgg.avgElevation.toFixed(3)}"</div>
+        </div>`:''}
+      </div>`:''}
+
+      ${sessRows.length?`<div style="padding:0 0 4px"><table class="shot-table">
         <thead><tr><th>#</th><th>FPS</th><th>Δ AVG</th><th>Notes</th></tr></thead>
         <tbody>${sessRows.map(s=>{ const d=ss?s.velocity-ss.avg:0; return `<tr><td>${s.num}</td><td style="font-weight:700;color:var(--text)">${Math.round(s.velocity)}</td><td class="${d>=0?'delta-pos':'delta-neg'}">${d>=0?'+':''}${fmt(d,1)}</td><td style="font-size:12px;color:var(--muted2)">${s.field_notes||''}</td></tr>`; }).join('')}</tbody>
-      </table></div>
-      ${sessTgts.length?`<div style="padding:8px 14px;border-top:1px solid var(--border)"><div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:4px">TARGET ANALYSIS</div>${sessTgts.map(tgtRowHtml).join('')}</div>`:''}
+      </table></div>`:''}
+
+      ${sessTgts.length?`<div style="padding:8px 14px;border-top:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:4px">TARGET IMAGES (${sessTgts.length})</div>
+        ${sessTgts.map(tgtRowHtml).join('')}
+      </div>`:''}
     </div>`;
   });
 
-  // Targets linked to batch but not a specific session
+  // ── Targets not linked to a specific session ──
   const batchOnlyTgts=allTgtSess.filter(t=>!t.range_session_id);
   if (batchOnlyTgts.length) {
+    const boAgg=aggregateTgtStats(batchOnlyTgts);
     html+=`<div class="card" style="margin-bottom:10px">
-      <div class="card-header"><div class="marker"></div><h3>Batch Targets</h3></div>
+      <div class="card-header"><div class="marker"></div><h3>Unlinked Targets</h3></div>
+      ${boAgg?`<div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${boAgg.avgGroupMOA.toFixed(2)} MOA</span>
+        <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-left:8px">MR ${boAgg.avgMeanRadMOA.toFixed(2)} · W ${boAgg.avgWindage>=0?'+':''}${boAgg.avgWindage.toFixed(3)}" · E ${boAgg.avgElevation>=0?'+':''}${boAgg.avgElevation.toFixed(3)}"</span>
+      </div>`:''}
       <div style="padding:8px 14px">${batchOnlyTgts.map(tgtRowHtml).join('')}</div>
     </div>`;
   }
