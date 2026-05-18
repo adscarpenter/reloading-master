@@ -405,6 +405,7 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .tgt-mode-hint{font-size:11px;font-family:'Share Tech Mono',monospace;
   color:var(--accent);padding:8px 12px;background:rgba(44,95,136,.08);
   border:1px solid rgba(44,95,136,.2);margin-bottom:10px;letter-spacing:.5px;}
+.rc-shot-blocked{opacity:.38;cursor:default;pointer-events:none;}
 .tgt-sess-list{margin-top:14px;}
 .tgt-sess-filter{display:flex;gap:6px;margin-bottom:10px;}
 .tgt-sess-filter-btn{padding:5px 12px;font-size:10px;font-weight:700;letter-spacing:1.5px;
@@ -2589,23 +2590,53 @@ routes['range-card'] = async ({id}) => {
     ? (sessBarrel!=null ? {name: sessLabel||'Manual', barrel_length: sessBarrel} : null)
     : currentFirearm;
 
+  // Build blocked-slot map: indices owned by any session other than the active one
+  const blockedMap = new Map();
+  _rcSession.sessions.forEach(s => {
+    if (s.id === _rcSession.activeSessId) return;
+    (s.shots || []).forEach((sh, i) => {
+      if (sh && sh.velocity > 0 && !blockedMap.has(i))
+        blockedMap.set(i, { velocity: sh.velocity, date: s.range_date || '' });
+    });
+  });
+  _rcSession.blockedIndices = new Set(blockedMap.keys());
+
   let shotRowsHtml='', lastGroup=null;
   cartridges.forEach((c,i)=>{
-    const existing=existingShots[i];
-    const hasVelo=existing&&existing.velocity>0;
-    const veloVal=hasVelo?Math.round(existing.velocity):'';
-    const expFps=adjVelo(batch,effectiveFirearmAtRender,bookVeloForRound(batch,c));
-    const expDelta=hasVelo&&expFps!=null?Math.round(existing.velocity-expFps):null;
     if (isGrouped&&c.group_label&&c.group_label!==lastGroup) {
       shotRowsHtml+=`<div class="rc-group-header"><div class="rc-group-title">${c.group_label}</div><div class="rc-group-params">${c.charge!=null?c.charge+' gr':''}${c.coal!=null?' · '+fmt(c.coal,3)+'"':''}${c.jump!=null?' · jump '+fmt(c.jump,3)+'"':''}</div></div>`;
       lastGroup=c.group_label;
     }
-    shotRowsHtml+=`
+    const subLine=[c.coal!=null?'COAL '+fmt(c.coal,3)+'"':null,c.jump!=null?'JUMP '+fmt(c.jump,3)+'"':null].filter(Boolean).join(' · ')||batch.bullet||'';
+    const chargeStr=c.charge!=null?c.charge+' gr':batch.charge_fixed!=null?batch.charge_fixed+' gr':'—';
+    const blocked=blockedMap.get(i);
+    if (blocked) {
+      shotRowsHtml+=`
+    <div class="rc-shot-row has-velo rc-shot-blocked" id="rc-row-${i}">
+      <div class="rc-shot-num fired" id="rc-num-${i}">${c.num}</div>
+      <div class="rc-shot-info">
+        <div class="rc-shot-charge">${chargeStr}</div>
+        <div class="rc-shot-sub">${subLine}</div>
+      </div>
+      <div class="rc-shot-right">
+        <div class="rc-velo-display has-val" id="rc-velo-disp-${i}">${Math.round(blocked.velocity)}</div>
+        <div class="rc-velo-unit">fps</div>
+        <div class="rc-velo-expected" id="rc-exp-${i}">PREV SESSION</div>
+        <div class="rc-tap-hint" style="visibility:hidden">–</div>
+      </div>
+    </div>`;
+    } else {
+      const existing=existingShots[i];
+      const hasVelo=existing&&existing.velocity>0;
+      const veloVal=hasVelo?Math.round(existing.velocity):'';
+      const expFps=adjVelo(batch,effectiveFirearmAtRender,bookVeloForRound(batch,c));
+      const expDelta=hasVelo&&expFps!=null?Math.round(existing.velocity-expFps):null;
+      shotRowsHtml+=`
     <div class="rc-shot-row ${hasVelo?'has-velo':''}" id="rc-row-${i}" onclick="openShotDetail('${id}',${i})">
       <div class="rc-shot-num ${hasVelo?'fired':''}" id="rc-num-${i}">${c.num}</div>
       <div class="rc-shot-info">
-        <div class="rc-shot-charge">${c.charge!=null?c.charge+' gr':batch.charge_fixed!=null?batch.charge_fixed+' gr':'—'}</div>
-        <div class="rc-shot-sub">${[c.coal!=null?'COAL '+fmt(c.coal,3)+'"':null,c.jump!=null?'JUMP '+fmt(c.jump,3)+'"':null].filter(Boolean).join(' · ')||batch.bullet||''}</div>
+        <div class="rc-shot-charge">${chargeStr}</div>
+        <div class="rc-shot-sub">${subLine}</div>
       </div>
       <div class="rc-shot-right">
         <div class="rc-velo-display ${hasVelo?'has-val':''}" id="rc-velo-disp-${i}">${veloVal||'—'}</div>
@@ -2614,6 +2645,7 @@ routes['range-card'] = async ({id}) => {
         <div class="rc-tap-hint">TAP TO ENTER</div>
       </div>
     </div>`;
+    }
   });
 
   render(`
@@ -2781,6 +2813,7 @@ function refreshRowExpected(idx) {
 
 // ── Shot Detail ──
 window.openShotDetail = async (batchId, idx) => {
+  if (_rcSession.blockedIndices?.has(idx)) return;
   const batch=await dbGet('batches',batchId);
   const firearms=await dbGetAll('firearms');
   // Use effective firearm so the manual barrel override on the Range Card propagates into shot detail's EXP MV
@@ -2941,7 +2974,7 @@ window.saveShotDetailAndNext = idx => { _saveShotDetailToSession(idx); updateRan
 window.closeShotDetail = () => { if (window._currentDetailIdx!=null) _saveShotDetailToSession(window._currentDetailIdx); updateRangeLiveStats(); document.getElementById('shot-detail-overlay')?.remove(); };
 
 function updateRangeLiveStats() {
-  const velos=(_rcSession.shots||[]).map(s=>s.velocity).filter(v=>v>0);
+  const velos=(_rcSession.shots||[]).filter((_,i)=>!(_rcSession.blockedIndices?.has(i))).map(s=>s.velocity).filter(v=>v>0);
   const avgEl=document.getElementById('rc-stat-avg'), sdEl=document.getElementById('rc-stat-sd'), esEl=document.getElementById('rc-stat-es');
   if (!velos.length){if(avgEl)avgEl.textContent='—';if(sdEl)sdEl.textContent='—';if(esEl)esEl.textContent='—';return;}
   const s=calcStats(velos);
@@ -2954,8 +2987,13 @@ window.commitRangeSession = async batchId => {
   const batch=await dbGet('batches',batchId);
   const cartridges=generateCartridges(batch);
   const shots=cartridges.map((_,i)=>{
-    const s=_rcSession.shots[i]||{velocity:0,field_notes:''};
     const c=cartridges[i];
+    if (_rcSession.blockedIndices?.has(i)) {
+      const shot={velocity:0,field_notes:''};
+      if (c.charge!=null) shot.charge=c.charge;
+      return shot;
+    }
+    const s=_rcSession.shots[i]||{velocity:0,field_notes:''};
     const shot={velocity:s.velocity||0,field_notes:s.field_notes||''};
     if (c.charge!=null) shot.charge=c.charge;
     return shot;
