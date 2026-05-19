@@ -1046,7 +1046,7 @@ register('firearms/results', async ({id}) => {
       <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:4px">TARGET · ${tgtAgg.totalShots} SHOTS · ${faTgts.length} SESSIONS</div>
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--accent)">${tgtAgg.avgGroupMOA.toFixed(2)} <span style="font-size:12px;color:var(--muted2);font-weight:400">MOA avg</span></div>
       <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:2px">MR ${tgtAgg.avgMeanRadMOA.toFixed(2)} MOA</div>
-      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">W <span style="color:var(--info)">${tgtAgg.avgWindageMOA>=0?'+':''}${tgtAgg.avgWindageMOA.toFixed(2)} MOA / ${tgtAgg.avgWindageMRAD>=0?'+':''}${tgtAgg.avgWindageMRAD.toFixed(2)} mil</span></div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">W <span style="color:var(--info)">${Math.abs(tgtAgg.avgWindageMOA).toFixed(2)} MOA ${tgtAgg.avgWindageMOA>=0?'R':'L'} / ${Math.abs(tgtAgg.avgWindageMRAD).toFixed(2)} mil</span></div>
       <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">E <span style="color:${tgtAgg.avgElevMOA>=0?'var(--success)':'var(--danger)'}">${tgtAgg.avgElevMOA>=0?'+':''}${tgtAgg.avgElevMOA.toFixed(2)} MOA / ${tgtAgg.avgElevMRAD>=0?'+':''}${tgtAgg.avgElevMRAD.toFixed(2)} mil</span></div>
     </div>`;
     html += `</div>`;
@@ -2695,8 +2695,8 @@ async function renderChronoTab(batch) {
       <div><div class="s-label">AVG GROUP</div><div style="font-size:18px;font-weight:700;color:var(--accent);font-family:'Barlow Condensed',sans-serif;line-height:1.1">${allTgtAgg.avgGroupMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div></div>
       <div><div class="s-label">MEAN RAD</div><div style="font-size:18px;font-weight:700;font-family:'Barlow Condensed',sans-serif;line-height:1.1">${allTgtAgg.avgMeanRadMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div></div>
       <div><div class="s-label">AVG WIND</div>
-        <div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--info);line-height:1.2">${allTgtAgg.avgWindageMOA>=0?'+':''}${allTgtAgg.avgWindageMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div>
-        <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${allTgtAgg.avgWindageMRAD>=0?'+':''}${allTgtAgg.avgWindageMRAD.toFixed(2)} mil · ${allTgtAgg.avgWindage>=0?'+':''}${allTgtAgg.avgWindage.toFixed(3)}"</div>
+        <div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:var(--info);line-height:1.2">${Math.abs(allTgtAgg.avgWindageMOA).toFixed(2)} ${allTgtAgg.avgWindageMOA>=0?'R':'L'}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div>
+        <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${Math.abs(allTgtAgg.avgWindageMRAD).toFixed(2)} mil · ${Math.abs(allTgtAgg.avgWindage).toFixed(3)}" ${allTgtAgg.avgWindage>=0?'R':'L'}</div>
       </div>
       <div><div class="s-label">AVG ELEV</div>
         <div style="font-size:14px;font-weight:700;font-family:'Share Tech Mono',monospace;color:${allTgtAgg.avgElevMOA>=0?'var(--success)':'var(--danger)'};line-height:1.2">${allTgtAgg.avgElevMOA>=0?'+':''}${allTgtAgg.avgElevMOA.toFixed(2)}<span style="font-size:10px;color:var(--muted2)"> MOA</span></div>
@@ -2750,7 +2750,7 @@ async function renderChronoTab(batch) {
           <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:3px">TARGET${tgtDist?' @ '+tgtDist:''}</div>
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${sessAgg.avgGroupMOA.toFixed(2)} <span style="font-size:11px;color:var(--muted2);font-weight:400">MOA avg${sessAgg.groupCount>1?' · '+sessAgg.groupCount+' grps':''}</span></div>
           <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:1px">MR ${sessAgg.avgMeanRadMOA.toFixed(2)} MOA</div>
-          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">W <span style="color:var(--info)">${sessAgg.avgWindageMOA>=0?'+':''}${sessAgg.avgWindageMOA.toFixed(2)} MOA / ${sessAgg.avgWindageMRAD>=0?'+':''}${sessAgg.avgWindageMRAD.toFixed(2)} mil</span></div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">W <span style="color:var(--info)">${Math.abs(sessAgg.avgWindageMOA).toFixed(2)} MOA ${sessAgg.avgWindageMOA>=0?'R':'L'} / ${Math.abs(sessAgg.avgWindageMRAD).toFixed(2)} mil</span></div>
           <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">E <span style="color:${sessAgg.avgElevMOA>=0?'var(--success)':'var(--danger)'}">${sessAgg.avgElevMOA>=0?'+':''}${sessAgg.avgElevMOA.toFixed(2)} MOA / ${sessAgg.avgElevMRAD>=0?'+':''}${sessAgg.avgElevMRAD.toFixed(2)} mil</span></div>
         </div>`:''}
       </div>`:''}
@@ -2790,7 +2790,7 @@ async function renderChronoTab(batch) {
       ${boAgg?`<div style="padding:8px 14px;border-bottom:1px solid var(--border)">
         <span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${boAgg.avgGroupMOA.toFixed(2)} MOA</span>
         <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-left:8px">MR ${boAgg.avgMeanRadMOA.toFixed(2)}</span>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:3px">W <span style="color:var(--info)">${boAgg.avgWindageMOA>=0?'+':''}${boAgg.avgWindageMOA.toFixed(2)} MOA / ${boAgg.avgWindageMRAD>=0?'+':''}${boAgg.avgWindageMRAD.toFixed(2)} mil</span> · ${boAgg.avgWindage>=0?'+':''}${boAgg.avgWindage.toFixed(3)}"</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:3px">W <span style="color:var(--info)">${Math.abs(boAgg.avgWindageMOA).toFixed(2)} MOA ${boAgg.avgWindageMOA>=0?'R':'L'} / ${Math.abs(boAgg.avgWindageMRAD).toFixed(2)} mil</span> · ${Math.abs(boAgg.avgWindage).toFixed(3)}" ${boAgg.avgWindage>=0?'R':'L'}</div>
         <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">E <span style="color:${boAgg.avgElevMOA>=0?'var(--success)':'var(--danger)'}">${boAgg.avgElevMOA>=0?'+':''}${boAgg.avgElevMOA.toFixed(2)} MOA / ${boAgg.avgElevMRAD>=0?'+':''}${boAgg.avgElevMRAD.toFixed(2)} mil</span> · ${boAgg.avgElevation>=0?'+':''}${boAgg.avgElevation.toFixed(3)}"</div>
       </div>`:''}
       <div style="padding:8px 14px">${batchOnlyTgts.map(tgtRowHtml).join('')}</div>
