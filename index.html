@@ -2531,6 +2531,142 @@ function aggregateTgtStats(tgtSessions) {
   };
 }
 
+// ── Chart drawing ──
+function drawVeloChart(canvas, shots, stats) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = 600, H = 90;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+  const p = {l:44, r:12, t:10, b:18};
+  const cW = W-p.l-p.r, cH = H-p.t-p.b;
+  const velos = shots.map(s=>s.velocity);
+  const yPad = Math.max(stats.es*0.4, 4);
+  const yMin = stats.avg - stats.es/2 - yPad;
+  const yMax = stats.avg + stats.es/2 + yPad;
+  const toX = i => p.l + (velos.length>1 ? i/(velos.length-1) : 0.5)*cW;
+  const toY = v => p.t + (1-(v-yMin)/(yMax-yMin))*cH;
+
+  ctx.fillStyle='#0f0f0f'; ctx.fillRect(0,0,W,H);
+
+  // Horizontal guide lines
+  ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
+  [0.25,0.5,0.75].forEach(f=>{
+    const y=p.t+f*cH; ctx.beginPath(); ctx.moveTo(p.l,y); ctx.lineTo(p.l+cW,y); ctx.stroke();
+  });
+
+  // 2SD band
+  const sd2y1=Math.max(p.t,toY(stats.avg+stats.sd*2)), sd2y2=Math.min(p.t+cH,toY(stats.avg-stats.sd*2));
+  ctx.fillStyle='rgba(243,156,18,0.06)'; ctx.fillRect(p.l,sd2y1,cW,sd2y2-sd2y1);
+
+  // 1SD band
+  const sdy1=toY(stats.avg+stats.sd), sdy2=toY(stats.avg-stats.sd);
+  ctx.fillStyle='rgba(39,174,96,0.12)'; ctx.fillRect(p.l,sdy1,cW,sdy2-sdy1);
+
+  // Avg line
+  const ay=toY(stats.avg);
+  ctx.strokeStyle='rgba(39,174,96,0.55)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(p.l,ay); ctx.lineTo(p.l+cW,ay); ctx.stroke(); ctx.setLineDash([]);
+
+  // Connection line
+  if (velos.length>1) {
+    ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    velos.forEach((v,i)=>{ const x=toX(i),y=toY(v); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+    ctx.stroke();
+  }
+
+  // Dots
+  velos.forEach((v,i)=>{
+    const dev=stats.sd>0?Math.abs(v-stats.avg)/stats.sd:0;
+    const col=dev<=1?'#27AE60':dev<=2?'#F39C12':'#E84C3D';
+    ctx.beginPath(); ctx.arc(toX(i),toY(v),3.5,0,Math.PI*2);
+    ctx.fillStyle=col; ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=0.5; ctx.stroke();
+  });
+
+  // Y labels
+  ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='9px monospace'; ctx.textAlign='right';
+  [yMin+(yMax-yMin)*0.2, stats.avg, yMin+(yMax-yMin)*0.8].map(Math.round).forEach(v=>{
+    const y=toY(v); if(y>p.t+5&&y<p.t+cH-4) ctx.fillText(v, p.l-3, y+3);
+  });
+
+  // X shot labels
+  ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,0.22)';
+  const idxs=velos.length<=1?[0]:velos.length<=6?velos.map((_,i)=>i):[0,Math.floor((velos.length-1)/2),velos.length-1];
+  idxs.forEach(i=>ctx.fillText(i+1, toX(i), p.t+cH+13));
+}
+
+function drawImpactScatter(canvas, tgtSessions) {
+  const dpr = window.devicePixelRatio || 1;
+  const SZ = 160;
+  canvas.width = SZ*dpr; canvas.height = SZ*dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  const W=SZ, H=SZ;
+
+  const groups=[];
+  tgtSessions.forEach(t=>{
+    if (!t.scale_px_per_in) return;
+    (t.groups||[]).forEach(g=>{
+      if (!g.poa||!g.impacts?.length) return;
+      const pts=g.impacts.map(imp=>({
+        wx:(imp.x-g.poa.x)/t.scale_px_per_in,
+        ey:-(imp.y-g.poa.y)/t.scale_px_per_in,
+      }));
+      const ex=groups.find(gr=>gr.color===g.color);
+      if(ex) ex.pts.push(...pts); else groups.push({color:g.color,pts});
+    });
+  });
+
+  ctx.fillStyle='#0f0f0f'; ctx.fillRect(0,0,W,H);
+  const allPts=groups.flatMap(g=>g.pts);
+
+  if (!allPts.length) {
+    ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.font='8px monospace'; ctx.textAlign='center';
+    ctx.fillText('SCALE NOT SET', W/2, H/2); return;
+  }
+
+  const pad=18, cx=W/2, cy=H/2;
+  const maxR=Math.max(...allPts.map(p=>Math.sqrt(p.wx**2+p.ey**2)),0.1);
+  const sc=(Math.min(W,H)/2-pad)/(maxR*1.25);
+  const toX=wx=>cx+wx*sc, toY=ey=>cy-ey*sc;
+
+  // Reference rings
+  const step=maxR<0.4?0.25:maxR<1?0.5:maxR<2.5?1:2;
+  for(let r=step; r<=maxR*1.35; r=Math.round((r+step)*100)/100){
+    ctx.beginPath(); ctx.arc(cx,cy,r*sc,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,0.2)'; ctx.font='7px monospace'; ctx.textAlign='left';
+    ctx.fillText(r+'"',cx+r*sc+2,cy-2);
+  }
+
+  // Crosshair
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=0.75; ctx.setLineDash([3,4]);
+  ctx.beginPath(); ctx.moveTo(pad,cy); ctx.lineTo(W-pad,cy);
+  ctx.moveTo(cx,pad); ctx.lineTo(cx,H-pad); ctx.stroke(); ctx.setLineDash([]);
+
+  // Mean-radius circles
+  groups.forEach(g=>{
+    if(g.pts.length<2) return;
+    const mx=g.pts.reduce((s,p)=>s+p.wx,0)/g.pts.length;
+    const my=g.pts.reduce((s,p)=>s+p.ey,0)/g.pts.length;
+    const mr=g.pts.reduce((s,p)=>s+Math.sqrt((p.wx-mx)**2+(p.ey-my)**2),0)/g.pts.length;
+    ctx.beginPath(); ctx.arc(toX(mx),toY(my),mr*sc,0,Math.PI*2);
+    ctx.strokeStyle=g.color+'60'; ctx.lineWidth=1.5; ctx.stroke();
+  });
+
+  // Impact dots
+  groups.forEach(g=>g.pts.forEach(p=>{
+    ctx.beginPath(); ctx.arc(toX(p.wx),toY(p.ey),4,0,Math.PI*2);
+    ctx.fillStyle=g.color; ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=0.75; ctx.stroke();
+  }));
+
+  // POA marker
+  ctx.strokeStyle='rgba(255,255,255,0.75)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(cx-5,cy); ctx.lineTo(cx+5,cy);
+  ctx.moveTo(cx,cy-5); ctx.lineTo(cx,cy+5); ctx.stroke();
+}
+
 async function renderChronoTab(batch) {
   const el=document.getElementById('tab-chrono'); if (!el) return;
   const sessions=sortSessions(migrateToRangeSessions(batch));
@@ -2587,6 +2723,7 @@ async function renderChronoTab(batch) {
   };
 
   // ── Per-session cards ──
+  const chartJobs=[];
   sessions.forEach((sess,si)=>{
     const sessRows=[];
     (sess.shots||[]).forEach((sh,idx)=>{ if (sh?.velocity>0) sessRows.push({num:idx+1,velocity:sh.velocity,field_notes:sh.field_notes||''}); });
@@ -2595,6 +2732,7 @@ async function renderChronoTab(batch) {
 
     const ss=sessRows.length?calcStats(sessRows.map(s=>s.velocity)):null;
     const sessAgg=aggregateTgtStats(sessTgts);
+    const hasImpact=sessTgts.some(t=>t.scale_px_per_in&&(t.groups||[]).some(g=>g.impacts?.length));
     const tgtDist=sessTgts[0]?`${sessTgts[0].distance} ${sessTgts[0].distance_unit}`:'';
     const label=sess.range_date?fmtDate(sess.range_date):`Session ${si+1}`;
     const fa=sess.firearm_id&&sess.firearm_id!=='__manual__'?` · ${sess.range_firearm_label||sess.firearm_id}`:sess.range_firearm_label?` · ${sess.range_firearm_label}`:'';
@@ -2617,6 +2755,17 @@ async function renderChronoTab(batch) {
         </div>`:''}
       </div>`:''}
 
+      ${sessRows.length>=2||hasImpact?`<div style="display:flex;gap:8px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);align-items:flex-start">
+        ${sessRows.length>=2&&ss?`<div style="flex:1;min-width:0">
+          <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:4px">VELOCITY · SHOT BY SHOT</div>
+          <canvas id="vc-${sess.id}" style="width:100%;height:90px;display:block"></canvas>
+        </div>`:''}
+        ${hasImpact?`<div style="flex-shrink:0">
+          <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:4px">IMPACTS</div>
+          <canvas id="ic-${sess.id}" style="width:140px;height:140px;display:block"></canvas>
+        </div>`:''}
+      </div>`:''}
+
       ${sessRows.length?`<div style="padding:0 0 4px"><table class="shot-table">
         <thead><tr><th>#</th><th>FPS</th><th>Δ AVG</th><th>Notes</th></tr></thead>
         <tbody>${sessRows.map(s=>{ const d=ss?s.velocity-ss.avg:0; return `<tr><td>${s.num}</td><td style="font-weight:700;color:var(--text)">${Math.round(s.velocity)}</td><td class="${d>=0?'delta-pos':'delta-neg'}">${d>=0?'+':''}${fmt(d,1)}</td><td style="font-size:12px;color:var(--muted2)">${s.field_notes||''}</td></tr>`; }).join('')}</tbody>
@@ -2627,6 +2776,9 @@ async function renderChronoTab(batch) {
         ${sessTgts.map(tgtRowHtml).join('')}
       </div>`:''}
     </div>`;
+
+    if (sessRows.length>=2&&ss) chartJobs.push({type:'velo',id:`vc-${sess.id}`,shots:sessRows,ss});
+    if (hasImpact) chartJobs.push({type:'impact',id:`ic-${sess.id}`,tgtSessions:sessTgts});
   });
 
   // ── Targets not linked to a specific session ──
@@ -2645,9 +2797,15 @@ async function renderChronoTab(batch) {
     </div>`;
   }
 
-  el.innerHTML=html;
-  el.innerHTML+=`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>
+  el.innerHTML=html+`<div style="margin-top:12px">${mkBtn('OPEN RANGE CARD','btn-primary',`navigate('range-card/${batch.id}')`, 'range')}</div>
     ${batch.range_date?`<p class="text-muted" style="font-size:12px;margin-top:10px;font-family:'Share Tech Mono',monospace">// RANGE DATE: ${fmtDate(batch.range_date)}</p>`:''}`;
+
+  // Draw charts (canvas dims set internally so works even in hidden tab)
+  chartJobs.forEach(job=>{
+    const c=document.getElementById(job.id); if(!c) return;
+    if(job.type==='velo') drawVeloChart(c, job.shots, job.ss);
+    else drawImpactScatter(c, job.tgtSessions);
+  });
 }
 window.clearShots = async batchId => {
   if (!confirm_('Clear all shot data?')) return;
