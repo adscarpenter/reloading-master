@@ -942,9 +942,22 @@ register('dashboard', async () => {
 // ════════════════════════════════════════════════════
 //  FIREARMS
 // ════════════════════════════════════════════════════
+// Score a batch for ranking — lower is better.
+// Target group MOA weighted heavily; SD/ES as tiebreaker.
+// Batches with no target data are ranked after those with target data.
+function scoreBatch(shots, tgtAgg) {
+  const ss = shots.length ? calcStats(shots.map(s=>s.velocity)) : null;
+  if (tgtAgg) {
+    const sdNorm = ss ? ss.sd / 5 : 20;
+    return { score: tgtAgg.avgGroupMOA * 0.7 + sdNorm * 0.3, hasTgt: true, ss };
+  }
+  if (ss && ss.n > 0) return { score: 1000 + ss.sd + ss.es * 0.1, hasTgt: false, ss };
+  return { score: 9999, hasTgt: false, ss: null };
+}
+
 register('firearms', async () => {
   setTitle('ARMS', false, `<button class="action-btn" onclick="navigate('firearms/new')">${ICONS.plus} ADD</button>`);
-  const firearms = await dbGetAll('firearms');
+  const [firearms, allBatches, allTgts] = await Promise.all([dbGetAll('firearms'), dbGetAll('batches'), dbGetAll('target_sessions')]);
   render(firearms.length===0 ? `
     <div class="empty-state">
       <div class="empty-icon"><canvas id="empty-rifle-arms" width="160" height="60" style="image-rendering:pixelated;image-rendering:crisp-edges"></canvas></div>
@@ -952,18 +965,42 @@ register('firearms', async () => {
       <p>Add your rifles to link them to load batches.</p>
       <div style="margin-top:20px">${mkBtn('REGISTER FIREARM','btn-primary',"navigate('firearms/new')",'')}  </div>
     </div>` :
-    firearms.map(f => `
-    <div class="list-item">
-      <div class="info" onclick="navigate('firearms/results/${f.id}')" style="cursor:pointer;flex:1">
-        <h4>${f.make_model||f.name}</h4>
-        <p>${f.chamber||f.caliber||'—'} · ${f.barrel_length?f.barrel_length+'″ BARREL':'—'}</p>
-      </div>
-      <div style="display:flex;gap:6px">
-        ${mkBtnSm('RESULTS','btn-secondary',`navigate('firearms/results/${f.id}')`,'')}
-        ${mkBtnSm('EDIT','btn-secondary',`navigate('firearms/edit/${f.id}')`,'')}
-      </div>
-    </div>`).join(''));
-  // draw rifle on empty state if shown
+    firearms.map(f => {
+      // Collect shots and targets for this firearm
+      const faTgts = allTgts.filter(t => t.firearm_id === f.name);
+      const batchItems = [];
+      allBatches.forEach(b => {
+        const faSessions = migrateToRangeSessions(b).filter(s => s.firearm_id === f.name);
+        if (!faSessions.length) return;
+        const shots = faSessions.flatMap(s => (s.shots||[]).filter(sh=>sh?.velocity>0));
+        const bTgts = faTgts.filter(t => t.batch_id === b.id);
+        const tgtAgg = aggregateTgtStats(bTgts);
+        const label = b.is_factory
+          ? [b.factory_mfr, b.factory_product].filter(Boolean).join(' ') || b.id
+          : (b.bullet || b.id);
+        batchItems.push({ batch:b, shots, tgtAgg, label, ...scoreBatch(shots, tgtAgg) });
+      });
+      const totalRounds = batchItems.reduce((s,b)=>s+b.shots.length, 0);
+      const ranked = [...batchItems].sort((a,b)=>a.score-b.score);
+      const top = ranked[0];
+      const topLabel = top
+        ? `${top.label}${top.hasTgt?' · '+top.tgtAgg.avgGroupMOA.toFixed(2)+' MOA':top.ss?' · SD '+fmt(top.ss.sd,1):''}` : null;
+      return `<div class="list-item" style="flex-direction:column;align-items:stretch;padding:12px 14px;cursor:pointer" onclick="navigate('firearms/results/${f.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <h4 style="margin:0 0 2px">${f.make_model||f.name}</h4>
+            <p style="margin:0;font-size:12px;color:var(--muted2)">${f.chamber||f.caliber||'—'} · ${f.barrel_length?f.barrel_length+'″ BARREL':'—'}</p>
+          </div>
+          ${mkBtnSm('EDIT','btn-secondary',`event.stopPropagation();navigate('firearms/edit/${f.id}')`,'')}
+        </div>
+        ${totalRounds||topLabel?`<div style="display:flex;gap:20px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+          ${totalRounds?`<div><div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif">TOTAL RDS</div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--ink)">${totalRounds}</div></div>`:''}
+          ${topLabel?`<div style="min-width:0;flex:1"><div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif">#1 LOAD</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${topLabel}</div></div>`:''}
+        </div>`:''}
+      </div>`;
+    }).join(''));
   setTimeout(() => {
     const c = document.getElementById('empty-rifle-arms');
     if (c) drawRifleOnCanvas(c, 160, 60, 4, 6);
@@ -1020,37 +1057,49 @@ register('firearms/results', async ({id}) => {
     render(html); return;
   }
 
-  // Per-batch range session cards
+  // Build ranked batch list
   const batchMap = new Map();
   matchedSessions.forEach(({batch,sess}) => {
     if (!batchMap.has(batch.id)) batchMap.set(batch.id, {batch, sessions:[]});
     batchMap.get(batch.id).sessions.push(sess);
   });
 
+  const batchItems = [];
   batchMap.forEach(({batch, sessions}) => {
     const shots = sessions.flatMap(s=>(s.shots||[]).filter(sh=>sh?.velocity>0));
-    const ss = shots.length ? calcStats(shots.map(s=>s.velocity)) : null;
     const bTgts = faTgts.filter(t => t.batch_id === batch.id);
-    const bAgg = aggregateTgtStats(bTgts);
+    const tgtAgg = aggregateTgtStats(bTgts);
+    const { score, hasTgt, ss } = scoreBatch(shots, tgtAgg);
+    batchItems.push({ batch, sessions, shots, tgtAgg, hasTgt, ss, score });
+  });
+  batchItems.sort((a,b) => a.score - b.score);
+
+  const rankColors = ['#F39C12','#95A5A6','#CD7F32']; // gold, silver, bronze
+  batchItems.forEach(({ batch, sessions, shots, tgtAgg, hasTgt, ss, score }, ri) => {
+    const rank = ri + 1;
+    const rankColor = rankColors[ri] || 'var(--muted2)';
     const label = batch.is_factory
       ? [batch.factory_mfr, batch.factory_product].filter(Boolean).join(' — ') || batch.id
-      : (batch.bullet ? `${batch.bullet} · ${batch.powder||''}` : batch.id);
+      : (batch.bullet ? `${batch.bullet}${batch.powder?' · '+batch.powder:''}` : batch.id);
     const dateStr = sessions.map(s=>s.range_date).filter(Boolean).sort().pop() || '';
-    html += `<div class="card" style="margin-bottom:10px">
+    html += `<div class="card" style="margin-bottom:10px;border-left:3px solid ${rankColor}">
       <div class="card-header" onclick="navigate('batch/${batch.id}')" style="cursor:pointer">
-        <div class="marker"></div><h3>${label}</h3>
-        <span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${dateStr}</span>
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:${rankColor};min-width:24px">#${rank}</span>
+          <h3 style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</h3>
+        </div>
+        <span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:var(--muted2);flex-shrink:0;margin-left:6px">${dateStr}</span>
       </div>
-      <div style="display:grid;grid-template-columns:${ss&&bAgg?'1fr 1fr':'1fr'};border-bottom:1px solid var(--border)">
-        ${ss?`<div style="padding:8px 14px${bAgg?';border-right:1px solid var(--border)':''}">
-          <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:2px">VELOCITY · ${shots.length} rds</div>
+      <div style="display:grid;grid-template-columns:${ss&&tgtAgg?'1fr 1fr':ss||tgtAgg?'1fr':''};border-bottom:1px solid var(--border)">
+        ${ss?`<div style="padding:8px 14px${tgtAgg?';border-right:1px solid var(--border)':''}">
+          <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:2px">VELOCITY · ${shots.length} rds</div>
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${Math.round(ss.avg)} <span style="font-size:11px;color:var(--muted2)">fps</span></div>
           <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">SD <strong style="color:var(--success)">${fmt(ss.sd,1)}</strong> · ES ${fmt(ss.es,1)}</div>
         </div>`:''}
-        ${bAgg?`<div style="padding:8px 14px">
-          <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:2px">TARGET</div>
-          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${bAgg.avgGroupMOA.toFixed(2)} <span style="font-size:11px;color:var(--muted2)">MOA avg</span></div>
-          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">W <span style="color:var(--info)">${Math.abs(bAgg.avgWindage).toFixed(3)}" ${bAgg.avgWindage>=0?'R':'L'}</span> · E <span style="color:${bAgg.avgElevation>=0?'var(--success)':'var(--danger)'}">${bAgg.avgElevation>=0?'+':''}${bAgg.avgElevation.toFixed(3)}"</span></div>
+        ${tgtAgg?`<div style="padding:8px 14px">
+          <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:2px">TARGET${hasTgt?' ★':''}</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${tgtAgg.avgGroupMOA.toFixed(2)} <span style="font-size:11px;color:var(--muted2)">MOA avg</span></div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">MR ${tgtAgg.avgMeanRadMOA.toFixed(2)} · W <span style="color:var(--info)">${Math.abs(tgtAgg.avgWindage).toFixed(3)}" ${tgtAgg.avgWindage>=0?'R':'L'}</span></div>
         </div>`:''}
       </div>
       <div style="padding:6px 14px"><span style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--accent);cursor:pointer" onclick="navigate('batch/${batch.id}')">VIEW BATCH →</span></div>
