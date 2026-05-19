@@ -954,11 +954,14 @@ register('firearms', async () => {
     </div>` :
     firearms.map(f => `
     <div class="list-item">
-      <div class="info">
+      <div class="info" onclick="navigate('firearms/results/${f.id}')" style="cursor:pointer;flex:1">
         <h4>${f.make_model||f.name}</h4>
         <p>${f.chamber||f.caliber||'—'} · ${f.barrel_length?f.barrel_length+'″ BARREL':'—'}</p>
       </div>
-      ${mkBtnSm('EDIT','btn-secondary',`navigate('firearms/edit/${f.id}')`,'')}
+      <div style="display:flex;gap:6px">
+        ${mkBtnSm('RESULTS','btn-secondary',`navigate('firearms/results/${f.id}')`,'')}
+        ${mkBtnSm('EDIT','btn-secondary',`navigate('firearms/edit/${f.id}')`,'')}
+      </div>
     </div>`).join(''));
   // draw rifle on empty state if shown
   setTimeout(() => {
@@ -971,6 +974,108 @@ register('firearms', async () => {
 
 register('firearms/new', ()=>renderFirearmForm(null));
 register('firearms/edit', ({id})=>renderFirearmForm(id));
+register('firearms/results', async ({id}) => {
+  const fa = await dbGet('firearms', Number(id));
+  if (!fa) { toast('FIREARM NOT FOUND','error'); navigate('firearms'); return; }
+  setTitle((fa.make_model||fa.name).toUpperCase(), true);
+  document.getElementById('back-btn').onclick = () => navigate('firearms');
+
+  const [allBatches, allTgts] = await Promise.all([dbGetAll('batches'), dbGetAll('target_sessions')]);
+  const faTgts = allTgts.filter(t => t.firearm_id === fa.name);
+
+  // Collect every range session that used this firearm
+  const matchedSessions = []; // [{batch, sess}]
+  allBatches.forEach(b => {
+    migrateToRangeSessions(b).forEach(s => {
+      if (s.firearm_id === fa.name) matchedSessions.push({batch:b, sess:s});
+    });
+  });
+
+  const allShots = matchedSessions.flatMap(({sess}) => (sess.shots||[]).filter(sh=>sh?.velocity>0));
+  const velStats = allShots.length ? calcStats(allShots.map(s=>s.velocity)) : null;
+  const tgtAgg   = aggregateTgtStats(faTgts);
+
+  let html = `<div style="margin-bottom:6px;font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${fa.chamber||fa.caliber||''} · ${fa.barrel_length?fa.barrel_length+'″':''}</div>`;
+
+  // Top stats
+  if (velStats || tgtAgg) {
+    html += `<div style="display:grid;grid-template-columns:${velStats&&tgtAgg?'1fr 1fr':'1fr'};border:1px solid var(--border);margin-bottom:14px">`;
+    if (velStats) html += `<div style="padding:10px 14px${tgtAgg?';border-right:1px solid var(--border)':''}">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:4px">ALL VELOCITY · ${allShots.length} RDS</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--ink)">${Math.round(velStats.avg)} <span style="font-size:12px;color:var(--muted2);font-weight:400">fps avg</span></div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:2px">SD <strong style="color:var(--success)">${fmt(velStats.sd,1)}</strong> · ES <strong>${fmt(velStats.es,1)}</strong></div>
+    </div>`;
+    if (tgtAgg) html += `<div style="padding:10px 14px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:4px">TARGET · ${tgtAgg.totalShots} SHOTS · ${faTgts.length} SESSIONS</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--accent)">${tgtAgg.avgGroupMOA.toFixed(2)} <span style="font-size:12px;color:var(--muted2);font-weight:400">MOA avg</span></div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:2px">MR ${tgtAgg.avgMeanRadMOA.toFixed(2)} MOA</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">W <span style="color:var(--info)">${tgtAgg.avgWindageMOA>=0?'+':''}${tgtAgg.avgWindageMOA.toFixed(2)} MOA / ${tgtAgg.avgWindageMRAD>=0?'+':''}${tgtAgg.avgWindageMRAD.toFixed(2)} mil</span></div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">E <span style="color:${tgtAgg.avgElevMOA>=0?'var(--success)':'var(--danger)'}">${tgtAgg.avgElevMOA>=0?'+':''}${tgtAgg.avgElevMOA.toFixed(2)} MOA / ${tgtAgg.avgElevMRAD>=0?'+':''}${tgtAgg.avgElevMRAD.toFixed(2)} mil</span></div>
+    </div>`;
+    html += `</div>`;
+  }
+
+  if (!matchedSessions.length && !faTgts.length) {
+    html += `<p style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--muted2)">// NO RANGE DATA LINKED TO THIS FIREARM YET</p>`;
+    render(html); return;
+  }
+
+  // Per-batch range session cards
+  const batchMap = new Map();
+  matchedSessions.forEach(({batch,sess}) => {
+    if (!batchMap.has(batch.id)) batchMap.set(batch.id, {batch, sessions:[]});
+    batchMap.get(batch.id).sessions.push(sess);
+  });
+
+  batchMap.forEach(({batch, sessions}) => {
+    const shots = sessions.flatMap(s=>(s.shots||[]).filter(sh=>sh?.velocity>0));
+    const ss = shots.length ? calcStats(shots.map(s=>s.velocity)) : null;
+    const bTgts = faTgts.filter(t => t.batch_id === batch.id);
+    const bAgg = aggregateTgtStats(bTgts);
+    const label = batch.is_factory
+      ? [batch.factory_mfr, batch.factory_product].filter(Boolean).join(' — ') || batch.id
+      : (batch.bullet ? `${batch.bullet} · ${batch.powder||''}` : batch.id);
+    const dateStr = sessions.map(s=>s.range_date).filter(Boolean).sort().pop() || '';
+    html += `<div class="card" style="margin-bottom:10px">
+      <div class="card-header" onclick="navigate('batch/${batch.id}')" style="cursor:pointer">
+        <div class="marker"></div><h3>${label}</h3>
+        <span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${dateStr}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:${ss&&bAgg?'1fr 1fr':'1fr'};border-bottom:1px solid var(--border)">
+        ${ss?`<div style="padding:8px 14px${bAgg?';border-right:1px solid var(--border)':''}">
+          <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:2px">VELOCITY · ${shots.length} rds</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${Math.round(ss.avg)} <span style="font-size:11px;color:var(--muted2)">fps</span></div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">SD <strong style="color:var(--success)">${fmt(ss.sd,1)}</strong> · ES ${fmt(ss.es,1)}</div>
+        </div>`:''}
+        ${bAgg?`<div style="padding:8px 14px">
+          <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:2px">TARGET</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${bAgg.avgGroupMOA.toFixed(2)} <span style="font-size:11px;color:var(--muted2)">MOA avg</span></div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2)">W <span style="color:var(--info)">${Math.abs(bAgg.avgWindage).toFixed(3)}" ${bAgg.avgWindage>=0?'R':'L'}</span> · E <span style="color:${bAgg.avgElevation>=0?'var(--success)':'var(--danger)'}">${bAgg.avgElevation>=0?'+':''}${bAgg.avgElevation.toFixed(3)}"</span></div>
+        </div>`:''}
+      </div>
+      <div style="padding:6px 14px"><span style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--accent);cursor:pointer" onclick="navigate('batch/${batch.id}')">VIEW BATCH →</span></div>
+    </div>`;
+  });
+
+  // Unlinked targets (linked to firearm but no matching batch session)
+  const unlinkedTgts = faTgts.filter(t => !matchedSessions.some(({batch})=>batch.id===t.batch_id));
+  if (unlinkedTgts.length) {
+    const uAgg = aggregateTgtStats(unlinkedTgts);
+    html += `<div class="card" style="margin-bottom:10px">
+      <div class="card-header"><div class="marker"></div><h3>Unlinked Targets</h3></div>
+      ${uAgg?`<div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${uAgg.avgGroupMOA.toFixed(2)} MOA</span>
+        <span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-left:8px">MR ${uAgg.avgMeanRadMOA.toFixed(2)}</span>
+      </div>`:''}
+      <div style="padding:8px 14px">${unlinkedTgts.map(t=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="loadTargetSession(${t.id})">
+        <span style="font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted2)">${t.range_date||'—'} · ${t.distance}${t.distance_unit}</span>
+        <span style="font-size:13px;font-weight:700;font-family:'Barlow Condensed',sans-serif;color:var(--ink)">${t.stats_group_moa!=null?t.stats_group_moa+' MOA':''} <span style="color:var(--accent)">→</span></span>
+      </div>`).join('')}</div>
+    </div>`;
+  }
+
+  render(html);
+});
 async function renderFirearmForm(id) {
   const fa = id ? await dbGet('firearms',Number(id)) : null;
   setTitle(fa?'EDIT FIREARM':'ADD FIREARM', true);
@@ -3367,13 +3472,13 @@ register('import', () => {
 
 window.exportData = async () => {
   try {
-    const [firearms,components,batches]=await Promise.all([dbGetAll('firearms'),dbGetAll('components'),dbGetAll('batches')]);
-    const payload={version:2,app:'ReloadingMaster',exported_at:new Date().toISOString(),firearms,components,batches};
+    const [firearms,components,batches,target_sessions]=await Promise.all([dbGetAll('firearms'),dbGetAll('components'),dbGetAll('batches'),dbGetAll('target_sessions')]);
+    const payload={version:3,app:'ReloadingMaster',exported_at:new Date().toISOString(),firearms,components,batches,target_sessions};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
     const date=new Date().toISOString().slice(0,10), filename=`reloading-master-${date}.json`;
     if (navigator.share){try{const file=new File([blob],filename,{type:'application/json'});await navigator.share({files:[file],title:'Reloading Master Export'});toast('EXPORTED','success');return;}catch(e){if(e.name==='AbortError')return;}}
     const url=URL.createObjectURL(blob), a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-    toast(`EXPORTED: ${batches.length} BATCHES`,'success');
+    toast(`EXPORTED: ${batches.length} BATCHES, ${target_sessions.length} TARGETS`,'success');
   } catch(err){toast('EXPORT FAILED: '+err.message,'error');}
 };
 
@@ -3391,6 +3496,8 @@ async function processJSONImport(text) {
     log.push(`<div class="ok">// COMPONENTS: ${cA} ADDED, ${cS} SKIPPED</div>`);
     let bA=0,bS=0; for (const b of(data.batches||[])){const ex=await dbGet('batches',b.id);if(ex){bS++;continue;}await dbPut('batches',b);bA++;}
     log.push(`<div class="ok">// BATCHES: ${bA} ADDED, ${bS} SKIPPED</div>`);
+    let tA=0,tS=0; for (const t of(data.target_sessions||[])){const ex=await dbGet('target_sessions',t.id);if(ex){tS++;continue;}await dbPut('target_sessions',t);tA++;}
+    if (tA||tS) log.push(`<div class="ok">// TARGET SESSIONS: ${tA} ADDED, ${tS} SKIPPED</div>`);
     log.push(`<div class="ok">// IMPORT COMPLETE</div>`);
     result.innerHTML=`<div class="import-log">${log.join('')}</div><div style="margin-top:12px">${mkBtn('GO TO DASHBOARD','btn-primary',"navigate('dashboard')")}</div>`;
     toast('IMPORT COMPLETE','success');
