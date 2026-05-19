@@ -1,0 +1,601 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RELOAD // MASTER V4</title>
+
+<style>
+:root{
+  --bg:#f5efdf;
+  --surface:#ede8d3;
+  --border:#b7a475;
+  --accent:#2c5f88;
+  --text:#1d2a35;
+  --muted:#7a6b50;
+  --success:#3d7a5c;
+  --danger:#b24c3d;
+}
+
+*{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:Arial,sans-serif;
+}
+
+header{
+  padding:16px;
+  border-bottom:2px solid var(--border);
+  background:var(--surface);
+}
+
+header h1{
+  font-size:20px;
+  letter-spacing:3px;
+}
+
+#app{
+  padding:16px;
+  max-width:1200px;
+  margin:auto;
+}
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  margin-bottom:16px;
+}
+
+.card-header{
+  padding:12px 16px;
+  border-bottom:1px solid var(--border);
+  font-weight:bold;
+  text-transform:uppercase;
+  letter-spacing:2px;
+}
+
+.card-body{
+  padding:16px;
+}
+
+.grid{
+  display:grid;
+  gap:16px;
+}
+
+.grid-2{
+  grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+}
+
+.stat{
+  padding:12px;
+  border:1px solid var(--border);
+  background:#fff8;
+}
+
+.stat-label{
+  font-size:12px;
+  color:var(--muted);
+  text-transform:uppercase;
+}
+
+.stat-value{
+  font-size:28px;
+  font-weight:bold;
+  margin-top:6px;
+  color:var(--accent);
+}
+
+button{
+  padding:12px 16px;
+  border:none;
+  background:var(--accent);
+  color:white;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+button:hover{
+  opacity:.9;
+}
+
+.table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.table th,
+.table td{
+  border-bottom:1px solid var(--border);
+  padding:10px;
+  text-align:left;
+}
+
+.table th{
+  text-transform:uppercase;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.badge{
+  display:inline-block;
+  padding:4px 8px;
+  border:1px solid var(--border);
+  font-size:12px;
+}
+
+.badge.success{
+  color:var(--success);
+  border-color:var(--success);
+}
+
+.badge.danger{
+  color:var(--danger);
+  border-color:var(--danger);
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>RELOAD // MASTER V4</h1>
+</header>
+
+<div id="app">
+
+  <div class="grid grid-2">
+
+    <div class="card">
+      <div class="card-header">Current Platform</div>
+      <div class="card-body">
+        <div class="stat">
+          <div class="stat-label">Rifle</div>
+          <div class="stat-value">6.5 PRC</div>
+        </div>
+
+        <br>
+
+        <div class="stat">
+          <div class="stat-label">Barrel Round Count</div>
+          <div class="stat-value">1240</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Active Development</div>
+      <div class="card-body">
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Test</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr>
+              <td>Charge Ladder 56.0 - 57.4</td>
+              <td><span class="badge success">ACTIVE</span></td>
+            </tr>
+
+            <tr>
+              <td>Seating Depth Validation</td>
+              <td><span class="badge">PENDING</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div class="card">
+    <div class="card-header">Quick Actions</div>
+
+    <div class="card-body">
+      <div class="grid grid-2">
+        <button onclick="app.startSession()">Start Session</button>
+        <button onclick="app.recordShot()">Record Shot</button>
+        <button onclick="app.importChrono()">Import Garmin CSV</button>
+        <button onclick="app.createRecipe()">Create Recipe</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Analytics Snapshot</div>
+
+    <div class="card-body">
+
+      <div class="grid grid-2">
+
+        <div class="stat">
+          <div class="stat-label">Best SD</div>
+          <div class="stat-value">6 FPS</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat-label">Best Group</div>
+          <div class="stat-value">0.41 MOA</div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+/*
+====================================================
+RELOAD MASTER V4
+FOUNDATIONAL ARCHITECTURE
+====================================================
+*/
+
+const DB_NAME = "reload_master_v4";
+const DB_VERSION = 1;
+
+const STORES = {
+  firearms: "firearms",
+  recipes: "recipes",
+  developmentSessions: "development_sessions",
+  testGroups: "test_groups",
+  shots: "shots",
+  analytics: "analytics"
+};
+
+class DatabaseManager {
+
+  constructor(){
+    this.db = null;
+  }
+
+  async init(){
+
+    return new Promise((resolve, reject) => {
+
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = (event) => {
+
+        const db = event.target.result;
+
+        /*
+        ============================================
+        FIREARMS
+        ============================================
+        */
+
+        if(!db.objectStoreNames.contains(STORES.firearms)){
+
+          const firearms = db.createObjectStore(
+            STORES.firearms,
+            { keyPath: "id" }
+          );
+
+          firearms.createIndex("nickname", "nickname");
+          firearms.createIndex("chambering", "chambering");
+        }
+
+        /*
+        ============================================
+        RECIPES
+        ============================================
+        */
+
+        if(!db.objectStoreNames.contains(STORES.recipes)){
+
+          const recipes = db.createObjectStore(
+            STORES.recipes,
+            { keyPath: "id" }
+          );
+
+          recipes.createIndex("firearmId", "firearmId");
+          recipes.createIndex("status", "status");
+        }
+
+        /*
+        ============================================
+        DEVELOPMENT SESSIONS
+        ============================================
+        */
+
+        if(!db.objectStoreNames.contains(STORES.developmentSessions)){
+
+          const sessions = db.createObjectStore(
+            STORES.developmentSessions,
+            { keyPath: "id" }
+          );
+
+          sessions.createIndex("firearmId", "firearmId");
+          sessions.createIndex("recipeId", "recipeId");
+          sessions.createIndex("date", "date");
+        }
+
+        /*
+        ============================================
+        TEST GROUPS
+        ============================================
+        */
+
+        if(!db.objectStoreNames.contains(STORES.testGroups)){
+
+          const groups = db.createObjectStore(
+            STORES.testGroups,
+            { keyPath: "id" }
+          );
+
+          groups.createIndex("sessionId", "sessionId");
+          groups.createIndex("type", "type");
+        }
+
+        /*
+        ============================================
+        SHOTS
+        ============================================
+        */
+
+        if(!db.objectStoreNames.contains(STORES.shots)){
+
+          const shots = db.createObjectStore(
+            STORES.shots,
+            { keyPath: "id" }
+          );
+
+          shots.createIndex("sessionId", "sessionId");
+          shots.createIndex("testGroupId", "testGroupId");
+          shots.createIndex("recipeId", "recipeId");
+          shots.createIndex("firearmId", "firearmId");
+          shots.createIndex("timestamp", "timestamp");
+        }
+
+        /*
+        ============================================
+        ANALYTICS CACHE
+        ============================================
+        */
+
+        if(!db.objectStoreNames.contains(STORES.analytics)){
+
+          db.createObjectStore(
+            STORES.analytics,
+            { keyPath: "id" }
+          );
+        }
+      };
+
+      request.onsuccess = (event) => {
+        this.db = event.target.result;
+        resolve();
+      };
+
+      request.onerror = () => reject(request.error);
+
+    });
+  }
+
+  async put(storeName, value){
+
+    return new Promise((resolve, reject) => {
+
+      const tx = this.db.transaction(storeName, "readwrite");
+
+      tx.objectStore(storeName).put(value);
+
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+
+    });
+  }
+
+  async getAll(storeName){
+
+    return new Promise((resolve, reject) => {
+
+      const tx = this.db.transaction(storeName, "readonly");
+
+      const request = tx.objectStore(storeName).getAll();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+
+    });
+  }
+}
+
+/*
+====================================================
+DOMAIN MODELS
+====================================================
+*/
+
+class Firearm {
+
+  static create(data){
+
+    return {
+      id: crypto.randomUUID(),
+
+      nickname: data.nickname,
+      chambering: data.chambering,
+
+      barrel: {
+        manufacturer: data.barrelManufacturer,
+        lengthIn: data.barrelLength,
+        twist: data.twist
+      },
+
+      lifecycle: {
+        totalRounds: 0,
+        roundsSinceClean: 0
+      },
+
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+  }
+}
+
+class Recipe {
+
+  static create(data){
+
+    return {
+      id: crypto.randomUUID(),
+
+      firearmId: data.firearmId,
+
+      name: data.name,
+
+      bullet: data.bullet,
+      powder: data.powder,
+      primer: data.primer,
+      brass: data.brass,
+
+      dimensions: {
+        chargeGr: data.chargeGr,
+        jump: data.jump,
+        cbto: data.cbto
+      },
+
+      status: "development",
+
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+  }
+}
+
+class Shot {
+
+  static create(data){
+
+    return {
+      id: crypto.randomUUID(),
+
+      sessionId: data.sessionId,
+      testGroupId: data.testGroupId,
+      firearmId: data.firearmId,
+      recipeId: data.recipeId,
+
+      shotNumber: data.shotNumber,
+
+      chrono: {
+        velocityFps: data.velocityFps
+      },
+
+      impact: {
+        xIn: data.xIn,
+        yIn: data.yIn
+      },
+
+      pressure: {
+        ejector: false,
+        crater: false,
+        swipe: false,
+        stickyBolt: false
+      },
+
+      flags: {
+        coldBore: false,
+        fouler: false,
+        excludeFromStats: false
+      },
+
+      timestamp: Date.now()
+    };
+  }
+}
+
+/*
+====================================================
+ANALYTICS ENGINE
+====================================================
+*/
+
+class AnalyticsEngine {
+
+  static calculateStats(shots){
+
+    const velocities = shots
+      .map(x => x.chrono.velocityFps)
+      .filter(Boolean);
+
+    if(!velocities.length){
+
+      return {
+        avg: 0,
+        sd: 0,
+        es: 0
+      };
+    }
+
+    const avg =
+      velocities.reduce((a,b)=>a+b,0) / velocities.length;
+
+    const variance =
+      velocities.reduce((sum, value) => {
+        return sum + Math.pow(value - avg, 2);
+      },0) / velocities.length;
+
+    return {
+      avg: Math.round(avg),
+      sd: Math.round(Math.sqrt(variance)),
+      es: Math.max(...velocities) - Math.min(...velocities)
+    };
+  }
+}
+
+/*
+====================================================
+APPLICATION CONTROLLER
+====================================================
+*/
+
+const app = {
+
+  db: new DatabaseManager(),
+
+  async init(){
+
+    await this.db.init();
+
+    console.log("Reload Master V4 Initialized");
+  },
+
+  startSession(){
+    alert("Start Session Workflow");
+  },
+
+  recordShot(){
+    alert("Record Shot Workflow");
+  },
+
+  importChrono(){
+    alert("Garmin CSV Import");
+  },
+
+  createRecipe(){
+    alert("Recipe Builder");
+  }
+};
+
+app.init();
+</script>
+
+</body>
+</html>
