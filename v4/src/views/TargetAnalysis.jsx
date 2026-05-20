@@ -231,7 +231,6 @@ function TargetEditor({ initial, distanceYds, onSave, onClose }) {
                 ref={fileRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 onChange={handleImageFile}
                 style={{ display: 'none' }}
               />
@@ -293,7 +292,7 @@ function TargetEditor({ initial, distanceYds, onSave, onClose }) {
               Change Image
             </span>
             <input
-              type="file" accept="image/*" capture="environment"
+              type="file" accept="image/*"
               onChange={handleImageFile} style={{ display: 'none' }}
             />
           </label>
