@@ -1,5 +1,5 @@
 export const DB_NAME = 'ReloadingV4';
-export const DB_VER  = 1;
+export const DB_VER  = 2;
 
 export function openDB() {
   return new Promise((resolve, reject) => {
@@ -53,6 +53,14 @@ export function openDB() {
         const s = db.createObjectStore('components', { keyPath: 'id', autoIncrement: true });
         s.createIndex('type', 'type');
         s.createIndex('name', 'name');
+      }
+
+      // v2: bench loading sessions (loading bench log)
+      if (!db.objectStoreNames.contains('bench_sessions')) {
+        const s = db.createObjectStore('bench_sessions', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('recipe_id', 'recipe_id');
+        s.createIndex('platform_id', 'platform_id');
+        s.createIndex('bench_date', 'bench_date');
       }
     };
     req.onsuccess = e => resolve(e.target.result);
