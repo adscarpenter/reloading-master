@@ -11,7 +11,10 @@ import {
   getShots, saveShot, deleteShot,
   computeStats,
 } from '../services/sessions.js';
+import { getTargetSessions } from '../services/targets.js';
 import { RECIPE_STATUS, STATUS_COLORS, CALIBERS } from '../core/constants.js';
+import RecipeDetail from './RecipeDetail.jsx';
+import TargetAnalysis from './TargetAnalysis.jsx';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -315,12 +318,13 @@ function ShotEntry({ session, groups, onShotsChanged }) {
 // ─── Session Detail ──────────────────────────────────────────────────────────
 
 function SessionDetail({ session, onBack, onRefresh }) {
-  const [recipe, setRecipe] = useState(null);
-  const [groups, setGroups] = useState([]);
-  const [stats, setStats] = useState({ count: 0, avg: 0, es: 0, sd: 0 });
-  const [showEdit, setShowEdit] = useState(false);
+  const [recipe, setRecipe]       = useState(null);
+  const [groups, setGroups]       = useState([]);
+  const [targets, setTargets]     = useState([]);
+  const [showEdit, setShowEdit]   = useState(false);
+  const [tab, setTab]             = useState('shots');
   const [platforms, setPlatforms] = useState([]);
-  const [recipes, setRecipes] = useState([]);
+  const [recipes, setRecipes]     = useState([]);
 
   useEffect(() => {
     load();
@@ -329,21 +333,21 @@ function SessionDetail({ session, onBack, onRefresh }) {
   }, [session.id]);
 
   async function load() {
-    const [rec, grps, shots] = await Promise.all([
+    const [rec, grps, shots, tgts] = await Promise.all([
       session.recipe_id ? getRecipe(session.recipe_id).catch(() => null) : Promise.resolve(null),
       getTestGroups(session.id),
       getShots(session.id),
+      getTargetSessions(session.id),
     ]);
     setRecipe(rec);
+    setTargets(tgts);
 
-    // Ensure at least one default group exists
     let g = grps;
     if (g.length === 0) {
       await saveTestGroup({ session_id: session.id, label: 'Group 1', distance_yds: session.distance_yds });
       g = await getTestGroups(session.id);
     }
     setGroups(g);
-    setStats(computeStats(shots.map(s => s.velocity)));
   }
 
   async function handleDeleteSession() {
@@ -358,10 +362,11 @@ function SessionDetail({ session, onBack, onRefresh }) {
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Header */}
       <div style={{
         padding: '9px 14px', borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)',
+        display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', flexShrink: 0,
       }}>
         <button
           onClick={onBack}
@@ -377,7 +382,8 @@ function SessionDetail({ session, onBack, onRefresh }) {
         <span style={{
           fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700,
           fontSize: '0.75rem', letterSpacing: '0.12em', color: 'var(--ink2)',
-          textTransform: 'uppercase', flex: 1,
+          textTransform: 'uppercase', flex: 1, overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {fmtDate(session.range_date)} · {recipe?.name || 'Session'}
         </span>
@@ -389,8 +395,8 @@ function SessionDetail({ session, onBack, onRefresh }) {
 
       {/* Session meta */}
       <div style={{
-        padding: '8px 14px', borderBottom: '1px solid var(--border)',
-        display: 'flex', gap: 14, flexWrap: 'wrap',
+        padding: '7px 14px', borderBottom: '1px solid var(--border)',
+        display: 'flex', gap: 14, flexWrap: 'wrap', flexShrink: 0,
       }}>
         {session.distance_yds && <span style={{ fontSize: '0.75rem', color: 'var(--ink3)' }}>{session.distance_yds}yds</span>}
         {session.temp_f && <span style={{ fontSize: '0.75rem', color: 'var(--ink3)' }}>{session.temp_f}°F</span>}
@@ -398,11 +404,33 @@ function SessionDetail({ session, onBack, onRefresh }) {
         {session.notes && <span style={{ fontSize: '0.75rem', color: 'var(--ink3)', fontStyle: 'italic' }}>{session.notes}</span>}
       </div>
 
-      <ShotEntry
-        session={session}
-        groups={groups}
-        onShotsChanged={() => { load(); onRefresh(); }}
-      />
+      {/* Tabs */}
+      <div className="tab-bar" style={{ flexShrink: 0 }}>
+        <button className={`tab-btn ${tab === 'shots' ? 'active' : ''}`} onClick={() => setTab('shots')}>
+          SHOTS
+        </button>
+        <button className={`tab-btn ${tab === 'targets' ? 'active' : ''}`} onClick={() => setTab('targets')}>
+          TARGETS {targets.length > 0 ? `(${targets.length})` : ''}
+        </button>
+      </div>
+
+      {/* Tab content */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {tab === 'shots' && (
+          <ShotEntry
+            session={session}
+            groups={groups}
+            onShotsChanged={() => { load(); onRefresh(); }}
+          />
+        )}
+        {tab === 'targets' && (
+          <TargetAnalysis
+            session={session}
+            targets={targets}
+            onRefresh={() => { load(); onRefresh(); }}
+          />
+        )}
+      </div>
 
       {showEdit && (
         <Modal title="Edit Session" onClose={() => setShowEdit(false)}>
@@ -611,6 +639,7 @@ export default function DevelopmentView() {
   const [sessionStats, setSessionStats] = useState({});
   const [recipeNames, setRecipeNames] = useState({});
   const [selectedSession, setSelectedSession] = useState(null);
+  const [selectedRecipeId, setSelectedRecipeId] = useState(null);
   const [showRecipeForm, setShowRecipeForm] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState(null);
   const [showSessionForm, setShowSessionForm] = useState(false);
@@ -659,6 +688,17 @@ export default function DevelopmentView() {
   const filteredSessions = [...sessions]
     .filter(s => !filterPlatformId || s.platform_id === +filterPlatformId)
     .sort((a, b) => (b.range_date || '').localeCompare(a.range_date || '') || b.id - a.id);
+
+  if (selectedRecipeId) {
+    return (
+      <RecipeDetail
+        recipeId={selectedRecipeId}
+        onBack={() => setSelectedRecipeId(null)}
+        onRefresh={() => { refresh(); load(); }}
+        onOpenSession={(s) => { setSelectedRecipeId(null); setSelectedSession(s); }}
+      />
+    );
+  }
 
   if (selectedSession) {
     return (
@@ -801,10 +841,16 @@ export default function DevelopmentView() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {filteredRecipes.map(r => (
-                  <div key={r.id} style={{
-                    background: 'var(--surface2)', border: '1px solid var(--border)',
-                    padding: '10px 12px',
-                  }}>
+                  <div
+                    key={r.id}
+                    onClick={() => setSelectedRecipeId(r.id)}
+                    style={{
+                      background: 'var(--surface2)', border: '1px solid var(--border)',
+                      padding: '10px 12px', cursor: 'pointer',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                  >
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -837,7 +883,7 @@ export default function DevelopmentView() {
                           )}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                         <button className="btn btn-xs" onClick={() => { setEditingRecipe(r); setShowRecipeForm(true); }}>Edit</button>
                         <button className="btn btn-xs btn-danger" onClick={() => handleDeleteRecipe(r.id)}>Del</button>
                       </div>
