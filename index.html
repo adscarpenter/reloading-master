@@ -1871,14 +1871,16 @@ async function renderBatchForm(batch) {
       <textarea class="form-control" id="b-notes">${b.notes||''}</textarea>
     </div>
 
-    ${!batch?`<div class="form-group" style="margin-top:4px">
+    <div class="form-group" style="margin-top:4px">
       <label style="display:flex;align-items:center;gap:8px">Batch Name
-        <span style="font-size:10px;font-weight:400;color:var(--muted2);font-family:'Share Tech Mono',monospace;letter-spacing:0">// auto-generated · editable</span>
+        ${!batch?`<span style="font-size:10px;font-weight:400;color:var(--muted2);font-family:'Share Tech Mono',monospace;letter-spacing:0">// auto-generated · editable</span>`
+                :`<span style="font-size:10px;font-weight:400;color:var(--muted2);font-family:'Share Tech Mono',monospace;letter-spacing:0">// rename will update all linked data</span>`}
       </label>
       <input class="form-control" id="b-batch-name" style="font-family:'Share Tech Mono',monospace"
-        placeholder="Fill fields above to generate…"
+        value="${batch?batch.id:''}"
+        placeholder="${batch?'':' Fill fields above to generate…'}"
         oninput="this.dataset.manual='true'">
-    </div>`:''}
+    </div>
 
     <div class="btn-group" style="margin-top:8px">
       ${mkBtn(batch?'SAVE CHANGES':'CREATE BATCH','btn-primary',batch?`updateBatch('${batch.id}')`:'saveBatch()','save')}
@@ -1889,6 +1891,9 @@ async function renderBatchForm(batch) {
   onBatchTypeChange();
   if (gMode==='manual' && b.groups) b.groups.forEach(g=>addManualGroup(g));
   updateAutoGroupPreview();
+  // In edit mode the name field is pre-filled with the existing ID — mark it
+  // manual so the auto-preview doesn't overwrite it as other fields change.
+  if (batch) { const ne=document.getElementById('b-batch-name'); if(ne) ne.dataset.manual='true'; }
 
   // Restore rifle seating blocks
   _rifleSeatingCount = 0;
@@ -2280,8 +2285,20 @@ window.updateBatch = async batchId => {
     if (!fields.bullet){toast('BULLET REQUIRED','error');return;}
     if (!fields.powder){toast('POWDER REQUIRED','error');return;}
   }
+  const newName=document.getElementById('b-batch-name')?.value.trim().replace(/\s+/g,'-').replace(/[^A-Z0-9\-_.]/gi,'').toUpperCase()||batchId;
   Object.assign(batch, fields);
-  await dbPut('batches',batch); toast('BATCH UPDATED','success'); navigate('batch/'+batchId);
+  if (newName && newName !== batchId) {
+    if (await dbGet('batches',newName)){toast('BATCH NAME ALREADY EXISTS','error');return;}
+    const renamed={...batch,id:newName};
+    await dbPut('batches',renamed);
+    await dbDelete('batches',batchId);
+    // Re-point any target sessions that referenced the old batch ID
+    const tgts=await dbGetAll('target_sessions');
+    await Promise.all(tgts.filter(t=>t.batch_id===batchId).map(t=>dbPut('target_sessions',{...t,batch_id:newName})));
+    toast('BATCH RENAMED & UPDATED','success'); navigate('batch/'+newName);
+  } else {
+    await dbPut('batches',batch); toast('BATCH UPDATED','success'); navigate('batch/'+batchId);
+  }
 };
 
 // ════════════════════════════════════════════════════
