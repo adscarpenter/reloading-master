@@ -1,0 +1,420 @@
+RELOAD // MASTER — App Build Description for Base44
+=====================================================
+
+OVERVIEW
+--------
+Build a mobile-first web app called RELOAD // MASTER for precision rifle
+reloaders. The app runs entirely in the browser with no backend or login —
+all data is stored locally in the user's browser (IndexedDB). It is optimized
+for iPad use and tracks the full reloading workflow: component inventory, load
+recipe creation, at-the-bench loading checklist, range session velocity data
+capture, ballistic drop calculation, and photo-based target analysis with shot
+group measurement.
+
+The visual theme is a warm parchment/paper aesthetic — cream and tan
+backgrounds, slate blue accent color (#2c5f88), square corners (no rounded
+corners anywhere), and three fonts: Barlow Condensed (all labels, headers,
+buttons — all caps), Share Tech Mono (all numeric data, values, batch IDs),
+and Lora serif (body text and notes).
+
+There are six main sections accessible from a bottom navigation bar:
+DASH, ARMS (Firearms), INV (Inventory), BATCH, TARGET, and SYNC.
+
+
+---
+PAGE 1: DASHBOARD (DASH)
+---
+The home screen. Shows three summary stats across the top: number of firearms
+registered, number of batches on file, and total shots recorded across all
+batches. Below that, a "Recent Batches" card lists the 5 most recently created
+batches, each showing the batch ID, bullet and powder, and average velocity if
+shots have been recorded. Tapping a batch goes to that batch's detail screen.
+
+
+---
+PAGE 2: FIREARMS (ARMS)
+---
+A list of all registered firearms. Each card shows the make/model, chamber,
+caliber, barrel length, total round count fired through it, and the top-ranked
+load for that firearm.
+
+Tapping a firearm card opens the Firearm Results screen (see below).
+A separate Edit button on each card opens the edit form.
+
+FIREARM FORM (Add / Edit):
+Fields: Name/ID, Make & Model, Chamber (e.g. "6.5 Creedmoor"), Caliber,
+Barrel Length (inches), Notes.
+
+FIREARM RESULTS SCREEN:
+Shows all range sessions across all batches linked to this firearm.
+At the top: aggregate velocity stats (avg fps, SD, ES across all sessions)
+and aggregate target stats (avg group size in MOA, avg mean radius in MOA,
+avg windage offset, avg elevation offset).
+
+Below that, a ranked list of every batch used with this firearm, sorted best
+to worst by a score that weights group MOA (70%) and velocity SD (30%).
+The top 3 are highlighted gold, silver, bronze. Each batch card shows the
+load description, velocity stats, and target group stats. Tapping a batch
+goes to the batch detail.
+
+
+---
+PAGE 3: INVENTORY (INV)
+---
+Tracks four types of components: Bullets, Powders, Primers, and Cases.
+Components are grouped by type with a section heading for each.
+
+Each component row shows: Name, Manufacturer, Lot Number, ID Number, Notes.
+
+Powder-specific tracking per component:
+- Total grains purchased, grains used, grains remaining
+- Pounds remaining (grains / 7000)
+- A progress bar showing % remaining
+- A configurable low-stock warning threshold (default 1000 gr)
+- A warning badge appears when remaining drops below the threshold
+
+Bullet / Primer / Case tracking per component:
+- Total quantity in stock, quantity loaded into rounds, quantity fired
+- Remaining = total - loaded - fired
+- A progress bar
+- Low-stock warnings: bullets < 20 remaining, primers < 100 remaining,
+  cases < 20 remaining
+- Cases additionally track a "fire count" (how many times the brass has
+  been fired). A warning appears at 3+ firings ("CHECK NECKS") and a
+  stronger warning at 5+ firings ("ANNEAL / INSPECT")
+
+Each component has stepper controls (tap + or -) to adjust the loaded
+and fired counts.
+
+ADD/EDIT COMPONENT FORM:
+Fields: Type (bullet/powder/primer/case), Name, Manufacturer, Lot Number,
+ID Number, Notes, plus type-specific quantity fields.
+
+
+---
+PAGE 4: BATCHES (BATCH)
+---
+A batch is a reloading recipe plus all the data collected when those
+cartridges are loaded and fired.
+
+BATCH LIST:
+All batches grouped by chambering (e.g. "6.5 Creedmoor"), sorted by
+creation date within each group. Each row shows the batch ID, the bullet
+and powder, and a type badge (FAC for factory ammo, GRP for grouped loads,
+LADDER for charge ladders). A velocity badge shows the average fps if data
+exists. Tapping a batch opens the batch detail.
+
+NEW / EDIT BATCH FORM:
+
+First, a toggle for Factory Load. When on, the form shows only:
+Manufacturer, Product Name, Lot/SKU, Advertised MV (fps), Rounds per Box.
+The batch ID for factory loads is auto-set from the manufacturer + product.
+
+For handloaded batches, the form includes:
+
+  Chambering: dropdown (308 Winchester, 223 Remington, 6.5 Creedmoor,
+  6mm Creedmoor, 300 Winchester Magnum, 6.5 PRC, 243 Winchester,
+  30-06 Springfield, 7mm Remington Magnum, 6mm ARC, 22-250 Remington,
+  204 Ruger)
+
+  Load Development Type: Validation Batch, Charge Ladder, Jump Ladder,
+  or Grouped
+
+  Components: Bullet (from Inventory), Powder (from Inventory),
+  Primer (from Inventory), Case Brand (from Inventory)
+
+  Bullet reference data: Bullet weight (grains), G1 BC, G7 BC
+  (used for ballistic drop table)
+
+  Charge weight: a single fixed charge OR a min/max range
+  (for ladders, the charges are interpolated across all rounds)
+
+  Seating depth: COAL (cartridge overall length, inches) or a min/max range;
+  Jump (thousandths of an inch) or a min/max range
+
+  Cartridge count: total number of rounds in the batch
+
+  Reloading Data Source (RDS): a reference block from the reloading manual —
+  source name, barrel length (inches), velocity min and max (fps) at that
+  barrel length, charge min and max at those velocities. This is used to
+  compute expected muzzle velocity for each round.
+
+  Per-rifle seating: a list of CBTO-to-jam measurements per firearm
+  (each entry: firearm name, CBTO measurement, date measured)
+
+  Group Mode (for Grouped load type only):
+    - Auto: enter rounds-per-group and total count; charges/COAL/jump
+      are automatically interpolated across groups
+    - Manual: user defines each group with a label, round count,
+      and specific charge/COAL/jump for that group
+
+  Notes
+
+The Batch ID is auto-generated from the bullet maker abbreviation,
+bullet weight, bullet model words, load type code, and a consonant-
+compressed powder name. Example: SIE175TGBT-CHLDR-H4831SC
+
+BATCH DETAIL — Three tabs: RECIPE, LOAD TABLE, RESULTS
+
+  RECIPE TAB:
+  Read-only display of all batch metadata: chambering, load type,
+  components, charge/COAL/jump, RDS reference data, rifle seating table,
+  loaded date, factory details if applicable, notes.
+
+  LOAD TABLE TAB:
+  A checklist for the bench. Shows total rounds, how many are loaded,
+  how many remain, and a progress bar.
+
+  Each round is one row: a checkbox to mark as loaded, the shot number,
+  the charge weight (displayed prominently), COAL and jump values, and
+  an inline notes field.
+
+  When a round is checked as loaded, the app deducts that charge weight
+  from the powder component's "grains used" in inventory. If the powder
+  goes below the low-stock threshold, a warning appears.
+
+  For grouped batches, a group header row appears before each group
+  showing the group label and parameters.
+
+  Bulk actions: Reset All (uncheck everything), Check All.
+
+  RESULTS TAB (Range Sessions):
+  A batch can have multiple range sessions (e.g. multiple trips to the
+  range with the same ammo). A scrollable chip bar at the top shows each
+  session by date and firearm, with a "+" chip to add a new session.
+
+  Each session shows:
+  - A header with date, firearm, distance
+  - A strip showing charge / COAL / jump for reference
+  - Editable environment fields: temperature (°F), altitude (ft),
+    humidity (%)
+  - Buttons to import velocities: paste a list of numbers, or import
+    a Garmin Xero A1 CSV file
+  - A live stats bar (sticky at top of the shot list) showing avg fps,
+    SD, and ES from all shots with data in this session
+  - The shot list: one row per round showing the shot number, charge weight,
+    and the velocity on the right. If RDS data is entered, each row also
+    shows the expected MV (book velocity adjusted for barrel length at
+    25 fps per inch difference) and the delta from actual.
+  - Tapping a shot row opens the Shot Detail overlay.
+
+  SHOT DETAIL OVERLAY (full screen):
+  - Large velocity input (big number, easy to type on iPad)
+  - Left/right arrows to navigate to adjacent shots
+  - Expected MV panel showing book value, barrel-length adjustment, and
+    delta from what was actually recorded (shown green if faster, red if
+    slower)
+  - Notes field
+  - Ballistic drop table: if bullet weight and BC are entered, shows a
+    table from 100 to 1000 yards in 100-yard increments with velocity
+    (fps), drop from zero (inches), drop in MOA, energy (ft-lbs), and
+    time of flight (seconds). Calculated using G1 or G7 drag tables with
+    full atmosphere correction for temperature, altitude, and humidity.
+
+
+---
+PAGE 5: TARGET ANALYSIS (TARGET)
+---
+A canvas-based tool for analyzing target photos. The user uploads a photo
+of a target, marks reference points to set a scale, places a point of aim,
+then taps each bullet hole to mark impacts. The app calculates group size,
+mean radius, and point-of-impact offset from point of aim.
+
+SESSION LIST:
+All saved target sessions shown as a list with date, linked batch or session
+name, and a delete button. Tapping a session opens the editor with that
+session's data. Filter buttons: ALL / by Batch / by Firearm.
+
+TARGET EDITOR:
+When a session is opened or a new one started, the editor fills the screen.
+
+Session metadata at the top:
+- Distance (number) and unit (yards or meters)
+- Range date and time
+- Firearm selector (from registered firearms)
+- Link to Batch dropdown (from batches list), or a custom Session Name
+  if no batch is linked
+- When a batch is linked, each group can be linked to a specific range
+  session within that batch, with first and last shot numbers
+
+Toolbar with these mode buttons (only one active at a time):
+
+  SCALE — Sets the pixels-per-inch scale of the image.
+    Step 1: Tap and drag to place the first reference point (shown as
+            a gold crosshair circle).
+    Step 2: Automatically advances; tap and drag to place the second
+            reference point. A dashed gold line connects them.
+    Below the canvas: enter the known distance between the two points
+    and select the unit (inches, centimeters, or millimeters).
+    On release of the second point, the scale is computed and displayed
+    as "SCALE: X.X px/in".
+
+  POA — Places the Point of Aim crosshair.
+    Tap anywhere on the image to place a large colored crosshair at
+    that spot. Automatically advances to IMPACT mode after placement.
+
+  IMPACT — Marks bullet holes.
+    Each tap on the image places a numbered circular impact marker at
+    that location, assigned to the currently active group.
+
+  EDIT — Repositions markers.
+    Tap any marker (impact, POA crosshair, or scale point) to select it,
+    then drag to reposition. A DELETE SELECTED button appears when an
+    impact is selected.
+
+  UNDO — Removes the last impact from the active group.
+  CLEAR — Clears all groups and scale marks, keeps the image.
+  FIT — Resets zoom and pan to fit the image in the view.
+  SAVE — Saves the session to storage.
+
+Impact markers show as colored filled circles with a white crosshair and
+a shot number in the center. Three size options: SM, MD, LG.
+
+Pan and zoom: pinch to zoom, two-finger drag to pan on touch devices.
+Mouse wheel to zoom, right-click drag to pan on desktop.
+
+Multi-group support: up to 8 groups, each a different color. A chip bar
+below the toolbar shows each group; tap a chip to make it the active group
+for placing new impacts. An "+ GROUP" chip adds a new group. Each group
+gets its own POA crosshair and its own set of impact markers.
+
+Groups can be linked to specific range sessions (and shot number ranges)
+from the linked batch for velocity correlation.
+
+STATS PANEL (below the canvas):
+Appears once scale, POA, and at least one impact are set.
+
+Per group:
+- Group Size: the largest distance between any two impacts (inches + MOA)
+- Mean Radius: average distance of all impacts from the group centroid
+  (inches + MOA)
+- POI-POA Windage: horizontal offset of the centroid from POA
+  (inches, labeled R or L)
+- POI-POA Elevation: vertical offset of the centroid from POA
+  (inches, labeled High or Low)
+- Width Spread: max windage minus min windage across all impacts
+- Height Spread: max elevation minus min elevation
+- A per-shot table: shot number, distance from POA, windage, elevation,
+  and velocity (if a range session is linked)
+- If a range session is linked: a velocity summary card showing avg MV,
+  SD, ES, min and max
+
+A dashed circle overlay is drawn on the image centered on the group
+centroid with a radius equal to half the group size, giving a visual
+representation of the group spread.
+
+Group stats can be saved back into the linked batch's range session data.
+
+Target sessions can be exported as a JSON file (uses iOS share sheet on
+iPad, falls back to a download on other devices).
+
+
+---
+PAGE 6: SYNC
+---
+Three sections:
+
+  EXPORT ALL DATA:
+  Exports everything (firearms, components, batches, target sessions) as
+  a single JSON file. On iPad uses the iOS share sheet; on other devices
+  triggers a download. Filename includes the date.
+
+  IMPORT JSON:
+  Import a previously exported JSON file. Tap to select or drag and drop.
+  Non-destructive — any record that already exists (matched by ID) is
+  skipped. New records are added. Shows a log of how many were added vs
+  skipped per category.
+
+  ONE-TIME EXCEL IMPORT:
+  Legacy import from the original Excel spreadsheet format. Reads sheets
+  named "Firearm Data", "Inventory", and "Batch Data" and maps columns to
+  the current data model.
+
+
+---
+DATA MODEL SUMMARY
+---
+
+FIREARM: id, name, make_model, chamber, caliber, barrel_length (in), notes
+
+COMPONENT: id, type (bullet/powder/primer/case), name, manufacturer,
+  lot_num, id_num, notes,
+  [powder]: powder_gr, powder_gr_used, warn_gr,
+  [bullet/primer/case]: case_qty, qty_loaded, qty_fired,
+  [case]: fire_count
+
+BATCH: id (string, auto-generated), is_factory, factory fields,
+  chambering, load_dev_type, group_mode,
+  bullet, bullet_weight_gr, bc_g1, bc_g7,
+  powder, primer, case_brand,
+  charge_fixed, charge_min, charge_max,
+  coal, coal_min, coal_max, jump, jump_min, jump_max,
+  cartridge_count, auto_group_size,
+  groups: [{label, count, charge, coal, jump}],
+  rifle_seating: [{firearm_id, cbto, date}],
+  rds_source, rds_barrel_length, rds_velo_min, rds_velo_max,
+  rds_charge_min, rds_charge_max,
+  cartridges: [{num, group_idx, group_label, charge, coal, jump,
+                loaded, notes}],
+  range_sessions: [{
+    id, range_date, range_time, firearm_id, distance_yds,
+    temp_f, alt_ft, humidity,
+    shots: [{num, velocity, notes}],
+    target_groups: [{groupLabel, distYds, groupSizeIn, groupSizeMOA,
+                     meanRadiusIn, meanRadiusMOA,
+                     poiWindageIn, poiElevationIn}]
+  }],
+  loaded_date, notes, created_at
+
+TARGET SESSION: id, batch_id, firearm_id, session_name, range_date,
+  range_time, dist_yds, dist_unit, scale_px_per_in,
+  image_data (base64 JPEG),
+  groups: [{
+    id, label, color,
+    poa: {x, y},
+    impacts: [{x, y, num}],
+    linkedSessionId, shotFirst, shotLast
+  }]
+
+
+---
+KEY BUSINESS LOGIC
+---
+
+EXPECTED MV CALCULATION:
+If a batch has RDS data (reloading manual reference with a velocity range
+at a known barrel length), the expected MV for each round is interpolated
+from the batch's charge weight relative to the RDS charge range, then
+adjusted by 25 fps per inch of barrel length difference between the RDS
+barrel and the actual firearm's barrel length.
+
+BALLISTIC DROP TABLE:
+Uses G1 or G7 drag tables with numerical integration (0.5ms time steps).
+Atmosphere is corrected for temperature, altitude, and humidity. Outputs
+velocity, drop-from-zero (inches), MOA, energy (ft-lbs), and time of
+flight at each 100-yard increment from 100 to 1000 yards.
+
+GROUP SIZE (TARGET):
+The largest straight-line distance between any two impact points in the
+group, converted from pixels to inches using the calibrated scale, then
+converted to MOA as: (inches × 100) / (yards × 1.047).
+
+MEAN RADIUS (TARGET):
+Average distance from the group centroid to each individual impact, in
+inches and MOA.
+
+FIREARM LOAD RANKING:
+Score = (group MOA × 0.7) + (velocity SD / 5 × 0.3) when target data
+exists. Score = 1000 + SD + (ES × 0.1) when only velocity data exists.
+Lower score = better. Used to rank loads per firearm on the results screen.
+
+BATCH ID GENERATION:
+Automatically built from: first 3 letters of bullet maker + bullet weight
++ bullet model words (stripped of caliber/weight tokens) + load type code
+(CHLDR/JMPLDR/GRP/VAL) + powder name with vowels stripped and letters
+deduplicated. Example: SIE175TGBT-CHLDR-H4831SC
+
+POWDER INVENTORY DEDUCTION:
+When a round is checked as "loaded" in the Load Table, the charge weight
+(in grains) is automatically subtracted from the powder component's
+"grains used" counter. Unchecking re-adds it.
