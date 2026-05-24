@@ -380,6 +380,16 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .vel-drum-readout-wrap{display:flex;align-items:baseline;gap:4px;}
 .vel-drum-readout{font-family:'Share Tech Mono',monospace;font-size:22px;color:var(--ink);}
 .vel-drum-fps-lbl{font-size:10px;color:var(--muted);letter-spacing:1px;}
+.det-fund-section{padding:12px 14px;border-bottom:1px solid var(--border);}
+.det-fund-head{font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:10px;}
+.det-fund-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.det-fund-row:last-child{margin-bottom:0;}
+.det-fund-label{font-size:13px;color:var(--ink);font-weight:600;letter-spacing:.3px;}
+.det-fund-btns{display:flex;gap:5px;}
+.det-fund-btn{width:42px;height:30px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:1px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;transition:background .12s,color .12s,border-color .12s;}
+.det-fund-btn.active.good{background:var(--success);border-color:var(--success);color:#000;}
+.det-fund-btn.active.fair{background:var(--accent);border-color:var(--accent);color:#000;}
+.det-fund-btn.active.poor{background:var(--danger);border-color:var(--danger);color:#fff;}
 @media print{#bottom-nav,#top-bar .action-btn,.tabs,.btn,.back-btn{display:none !important;}#view{padding:0;}}
 #target-canvas-wrap{position:relative;width:100%;touch-action:none;
   background:#1a1a1a;overflow:hidden;border:1px solid var(--border);
@@ -3198,7 +3208,7 @@ routes['range-card'] = async ({id}) => {
 
   const activeSess = _rcSession.sessions.find(s=>s.id===_rcSession.activeSessId) || _rcSession.sessions[0] || null;
   const existingShots = activeSess?.shots || [];
-  _rcSession.shots = cartridges.map((_,i)=>{ const e=existingShots[i]; return {velocity:e?.velocity||0,field_notes:e?.field_notes||''}; });
+  _rcSession.shots = cartridges.map((_,i)=>{ const e=existingShots[i]; return {velocity:e?.velocity||0,field_notes:e?.field_notes||'',...(e?.fundamentals?{fundamentals:e.fundamentals}:{})}; });
 
   // Resolve firearm from active session first, fall back to batch fields
   const sessFirearmId = activeSess?.firearm_id || batch.firearm_id || '';
@@ -3531,6 +3541,28 @@ window.openShotDetail = async (batchId, idx) => {
         <textarea class="det-notes-input" id="det-notes-input" placeholder="Primer pocket, case condition, felt recoil, group location...">${shot.field_notes||''}</textarea>
       </div>
 
+      ${(()=>{
+        const f=shot.fundamentals||{};
+        const row=(key,label)=>{
+          const cur=f[key]||null;
+          return `<div class="det-fund-row">
+            <div class="det-fund-label">${label}</div>
+            <div class="det-fund-btns">
+              <button class="det-fund-btn good ${cur==='good'?'active':''}" data-fund-key="${key}" data-fund-val="good" onclick="onFundamental(${idx},'${key}','good')">G</button>
+              <button class="det-fund-btn fair ${cur==='fair'?'active':''}" data-fund-key="${key}" data-fund-val="fair" onclick="onFundamental(${idx},'${key}','fair')">F</button>
+              <button class="det-fund-btn poor ${cur==='poor'?'active':''}" data-fund-key="${key}" data-fund-val="poor" onclick="onFundamental(${idx},'${key}','poor')">P</button>
+            </div>
+          </div>`;
+        };
+        return `<div class="det-fund-section">
+          <div class="det-fund-head">Shot Fundamentals</div>
+          ${row('body_position','Body Position')}
+          ${row('breathing','Breathing')}
+          ${row('trigger_pull','Trigger Pull')}
+          ${row('follow_through','Follow Through')}
+        </div>`;
+      })()}
+
       <div class="det-section">
         <div class="det-section-head">Round Makeup</div>
         ${isGrouped?`<div class="det-row"><div class="det-row-label">Group</div><div class="det-row-val accent">${c.group_label||'—'}</div></div>`:''}
@@ -3615,6 +3647,17 @@ window.onDrumScroll = idx => {
   refreshRowExpected(idx);
 };
 
+window.onFundamental = (idx, key, val) => {
+  if (!_rcSession.shots[idx]) _rcSession.shots[idx]={velocity:0,field_notes:''};
+  if (!_rcSession.shots[idx].fundamentals) _rcSession.shots[idx].fundamentals={};
+  const cur=_rcSession.shots[idx].fundamentals[key];
+  const newVal=cur===val?null:val;
+  _rcSession.shots[idx].fundamentals[key]=newVal;
+  document.querySelectorAll(`[data-fund-key="${key}"]`).forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.fundVal===newVal);
+  });
+};
+
 function initVelDrum(centerVal, currentVal, sessEstVelo, idx) {
   const drum=document.getElementById('vel-drum'); if(!drum) return;
   const cv=centerVal??sessEstVelo;
@@ -3673,6 +3716,7 @@ window.commitRangeSession = async batchId => {
     }
     const s=_rcSession.shots[i]||{velocity:0,field_notes:''};
     const shot={velocity:s.velocity||0,field_notes:s.field_notes||''};
+    if (s.fundamentals) shot.fundamentals=s.fundamentals;
     if (c.charge!=null) shot.charge=c.charge;
     return shot;
   });
