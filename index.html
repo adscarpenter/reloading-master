@@ -1692,12 +1692,18 @@ register('batches', async () => {
     groups.get(key).push(b);
   }
   if (groups.has('Other')) { const o=groups.get('Other'); groups.delete('Other'); groups.set('Other',o); }
+  const _bStatCol=(label,val)=>`<div style="text-align:center;padding:4px 2px">
+      <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;white-space:nowrap">${label}</div>
+      <div style="font-size:13px;font-family:'Share Tech Mono',monospace;color:${val==='—'?'var(--border2)':'var(--ink)'};margin-top:2px">${val}</div>
+    </div>`;
   const renderBatchItem = b => {
     const sessions=migrateToRangeSessions(b);
     const allVelos=sessions.flatMap(s=>(s.shots||[]).filter(sh=>sh?.velocity>0).map(sh=>sh.velocity));
     const stats=allVelos.length?calcStats(allVelos):null;
     const allGrpMOA=sessions.flatMap(s=>(s.target_groups||[]).map(g=>g.groupSizeMOA).filter(v=>v>0));
     const avgGrpMOA=allGrpMOA.length?(allGrpMOA.reduce((a,v)=>a+v,0)/allGrpMOA.length):null;
+    const loadedCt=(b.cartridges||[]).filter(c=>c.loaded).length;
+    const totalCt=b.cartridge_count||b.cartridges?.length||0;
     const isGrouped=b.group_mode&&b.group_mode!=='none';
     const isFac=b.is_factory;
     const badgeClass=isFac?'badge-factory':isGrouped?'badge-grouped':b.load_dev_type==='Charge Ladder'?'badge-ladder':'';
@@ -1708,18 +1714,26 @@ register('batches', async () => {
       ...(b.firearm_id&&b.firearm_id!=='__manual__'?[b.firearm_id]:[])
     ])];
     const faLine=firearms.length?`<p style="font-size:11px;color:var(--accent);margin-top:2px;letter-spacing:.5px">${firearms.join(' · ')}</p>`:'';
-    const resultsparts=[];
-    if(stats&&stats.n>0){
-      resultsparts.push(`AVG ${Math.round(stats.avg)}`);
-      resultsparts.push(`SD ${stats.sd.toFixed(1)}`);
-      resultsparts.push(`ES ${Math.round(stats.es)}`);
-    }
-    if(avgGrpMOA) resultsparts.push(`GRP ${avgGrpMOA.toFixed(2)} MOA`);
-    const resLine=resultsparts.length?`<p style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:3px">${resultsparts.join(' · ')}</p>`:'';
-    return `<div class="list-item" onclick="navigate('batch/${b.id}')">
-      <div class="info"><h4>${b.id}</h4><p>${subLine}</p>${faLine}${resLine}</div>
-      ${badgeText?`<span class="badge ${badgeClass}">${badgeText}</span>`:''}
-      <span class="chevron">›</span>
+    return `<div class="list-item" style="display:block;padding:12px 14px" onclick="navigate('batch/${b.id}')">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div class="info" style="flex:1;min-width:0">
+          <h4>${b.id}</h4>
+          <p style="margin-top:2px">${subLine}</p>
+          ${faLine}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;padding-top:2px">
+          ${badgeText?`<span class="badge ${badgeClass}">${badgeText}</span>`:''}
+          <span class="chevron">›</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+        ${_bStatCol('LOADED', isFac?'—':(totalCt?`${loadedCt}/${totalCt}`:'—'))}
+        ${_bStatCol('FIRED', allVelos.length||'—')}
+        ${_bStatCol('AVG FPS', stats?Math.round(stats.avg):'—')}
+        ${_bStatCol('SD', stats?stats.sd.toFixed(1):'—')}
+        ${_bStatCol('ES', stats?Math.round(stats.es):'—')}
+        ${_bStatCol('GRP MOA', avgGrpMOA?avgGrpMOA.toFixed(2):'—')}
+      </div>
     </div>`;
   };
   let html='';
