@@ -1696,6 +1696,8 @@ register('batches', async () => {
     const sessions=migrateToRangeSessions(b);
     const allVelos=sessions.flatMap(s=>(s.shots||[]).filter(sh=>sh?.velocity>0).map(sh=>sh.velocity));
     const stats=allVelos.length?calcStats(allVelos):null;
+    const allGrpMOA=sessions.flatMap(s=>(s.target_groups||[]).map(g=>g.groupSizeMOA).filter(v=>v>0));
+    const avgGrpMOA=allGrpMOA.length?(allGrpMOA.reduce((a,v)=>a+v,0)/allGrpMOA.length):null;
     const isGrouped=b.group_mode&&b.group_mode!=='none';
     const isFac=b.is_factory;
     const badgeClass=isFac?'badge-factory':isGrouped?'badge-grouped':b.load_dev_type==='Charge Ladder'?'badge-ladder':'';
@@ -1706,10 +1708,17 @@ register('batches', async () => {
       ...(b.firearm_id&&b.firearm_id!=='__manual__'?[b.firearm_id]:[])
     ])];
     const faLine=firearms.length?`<p style="font-size:11px;color:var(--accent);margin-top:2px;letter-spacing:.5px">${firearms.join(' · ')}</p>`:'';
+    const resultsparts=[];
+    if(stats&&stats.n>0){
+      resultsparts.push(`AVG ${Math.round(stats.avg)}`);
+      resultsparts.push(`SD ${stats.sd.toFixed(1)}`);
+      resultsparts.push(`ES ${Math.round(stats.es)}`);
+    }
+    if(avgGrpMOA) resultsparts.push(`GRP ${avgGrpMOA.toFixed(2)} MOA`);
+    const resLine=resultsparts.length?`<p style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted2);margin-top:3px">${resultsparts.join(' · ')}</p>`:'';
     return `<div class="list-item" onclick="navigate('batch/${b.id}')">
-      <div class="info"><h4>${b.id}</h4><p>${subLine}</p>${faLine}</div>
+      <div class="info"><h4>${b.id}</h4><p>${subLine}</p>${faLine}${resLine}</div>
       ${badgeText?`<span class="badge ${badgeClass}">${badgeText}</span>`:''}
-      ${stats&&stats.n>0?`<span class="badge badge-val mono">${Math.round(stats.avg)}</span>`:''}
       <span class="chevron">›</span>
     </div>`;
   };
