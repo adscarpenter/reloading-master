@@ -3858,7 +3858,7 @@ let _tgt = {
   groups: [{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}], activeGroupId:'g0',
   distYds: 100, distUnit: 'yds', batchId: '', sessionName: '',
   rangeDate: new Date().toISOString().slice(0,10),
-  rangeTime: '', firearmdId: '', savedId: null, rangeSessionId: '',
+  rangeTime: '', firearmdId: '', savedId: null, rangeSessionId: '', linkedSessionShots: [],
   mode: 'scale1', impactSize: 'md', dragType: null, dragGroupId: null,
   scaleP1: null, scaleP2: null, selectedGroupId: null, selectedImpactIdx: -1,
   dragging: false, dragOffsetX: 0, dragOffsetY: 0,
@@ -4051,7 +4051,7 @@ register('target', async () => {
   `);
 
   renderTargetSessionsList();
-  if (_tgt.batchId) onTgtBatchChange(_tgt.batchId);
+  if (_tgt.batchId) onTgtBatchChange(_tgt.batchId, true);
 
   if (_tgt.imageData) {
     initTargetCanvas();
@@ -4590,7 +4590,7 @@ window.newTargetSession = () => {
     rangeTime:_tgt.rangeTime, distYds:_tgt.distYds, distUnit:_tgt.distUnit };
   Object.assign(_tgt, keep, {
     image:null, imageData:null, scale:null, scaleP1:null, scaleP2:null,
-    savedId:null, batchId:'', rangeSessionId:'', sessionName:'',
+    savedId:null, batchId:'', rangeSessionId:'', linkedSessionShots:[], sessionName:'',
     mode:'scale1', panX:0, panY:0, zoom:1,
     groups:[{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}],
     activeGroupId:'g0', selectedGroupId:null, selectedImpactIdx:-1,
@@ -4718,17 +4718,36 @@ function renderTargetStats() {
     </table></div>`;
   }
 
+  // Linked velocity summary
+  const lShots = _tgt.linkedSessionShots || [];
+  if (lShots.length) {
+    const vs = calcStats(lShots.map(s=>s.velocity));
+    html += `<div class="section-title">Linked Range Session — Velocity</div>
+    <div class="tgt-stat-grid">
+      <div class="tgt-stat-box"><div class="tgt-stat-label">AVG MV</div><div class="tgt-stat-val">${Math.round(vs.avg)}<span class="tgt-stat-unit">fps</span></div></div>
+      <div class="tgt-stat-box"><div class="tgt-stat-label">SD</div><div class="tgt-stat-val">${vs.sd.toFixed(1)}<span class="tgt-stat-unit">fps</span></div></div>
+      <div class="tgt-stat-box"><div class="tgt-stat-label">ES</div><div class="tgt-stat-val">${Math.round(vs.es)}<span class="tgt-stat-unit">fps</span></div></div>
+      <div class="tgt-stat-box"><div class="tgt-stat-label">MIN / MAX</div><div class="tgt-stat-val" style="font-size:14px">${Math.round(vs.min)} / ${Math.round(vs.max)}</div></div>
+    </div>`;
+  }
+
   // Shot data table (single group — same as before; multi-group — show per-group)
   if (!multiGroup && gStats[0]) {
     const s0 = gStats[0];
+    const hasVelo = lShots.length > 0;
+    const veloMap = Object.fromEntries(lShots.map(s=>[s.num, s.velocity]));
     html += `<div class="section-title">Shot Data — ${s0.shots.length} Impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>
     <div style="overflow-x:auto"><table class="tgt-shot-table">
-      <thead><tr><th>#</th><th>Dist (in)</th><th>Windage</th><th>Elev (in)</th></tr></thead>
-      <tbody>${s0.shots.map(s=>`<tr>
-        <td>${s.num}</td><td>${s.dist.toFixed(3)}</td>
-        <td style="color:var(--info)">${Math.abs(s.windage).toFixed(3)} ${s.windage>=0?'R':'L'}</td>
-        <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
-      </tr>`).join('')}</tbody>
+      <thead><tr><th>#</th><th>Dist (in)</th><th>Windage</th><th>Elev (in)</th>${hasVelo?'<th>MV (fps)</th>':''}</tr></thead>
+      <tbody>${s0.shots.map(s=>{
+        const v=hasVelo?veloMap[s.num]:null;
+        return `<tr>
+          <td>${s.num}</td><td>${s.dist.toFixed(3)}</td>
+          <td style="color:var(--info)">${Math.abs(s.windage).toFixed(3)} ${s.windage>=0?'R':'L'}</td>
+          <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
+          ${hasVelo?`<td style="font-family:'Share Tech Mono',monospace;color:var(--ink)">${v!=null?Math.round(v):'—'}</td>`:''}
+        </tr>`;
+      }).join('')}</tbody>
     </table></div>`;
   }
 
@@ -4854,9 +4873,9 @@ window.loadTargetSession = async id => {
   navigate('target');
 };
 
-window.onTgtBatchChange = async val => {
+window.onTgtBatchChange = async (val, keepSession=false) => {
   _tgt.batchId = val;
-  _tgt.rangeSessionId = '';
+  if (!keepSession) { _tgt.rangeSessionId = ''; _tgt.linkedSessionShots = []; }
   const nameWrap = document.getElementById('tgt-name-wrap');
   if (nameWrap) nameWrap.style.display = val ? 'none' : '';
   const wrap = document.getElementById('tgt-sess-link-wrap');
@@ -4869,14 +4888,31 @@ window.onTgtBatchChange = async val => {
   const opts = sessions.map(s => {
     const n = (s.shots||[]).filter(sh=>sh?.velocity>0).length;
     const label = `${s.range_date||'—'} · ${n} shots${s.firearm_id&&s.firearm_id!=='__manual__'?' · '+s.firearm_id:''}`;
-    return `<option value="${s.id}" ${s.id===_tgt.rangeSessionId?'selected':''}>${label}</option>`;
+    return `<option value="${s.id}" ${s.id==_tgt.rangeSessionId?'selected':''}>${label}</option>`;
   }).join('');
   wrap.innerHTML = `<div class="form-row"><div class="form-group" style="margin-bottom:0">
     <label>Range Session</label>
-    <select class="form-control" id="tgt-range-sess" onchange="_tgt.rangeSessionId=this.value">
+    <select class="form-control" id="tgt-range-sess" onchange="onTgtRangeSessChange(this.value)">
       <option value="">— Batch only —</option>${opts}
     </select>
   </div></div>`;
+  // If restoring a saved session with a pre-selected range session, load its shots
+  if (_tgt.rangeSessionId) {
+    const sess = sessions.find(s => s.id == _tgt.rangeSessionId);
+    _tgt.linkedSessionShots = (sess?.shots||[]).filter(sh=>sh?.velocity>0);
+  }
+};
+
+window.onTgtRangeSessChange = async val => {
+  _tgt.rangeSessionId = val;
+  if (val && _tgt.batchId) {
+    const batch = await dbGet('batches', _tgt.batchId);
+    const sess = batch ? migrateToRangeSessions(batch).find(s => s.id == val) : null;
+    _tgt.linkedSessionShots = (sess?.shots||[]).filter(sh=>sh?.velocity>0);
+  } else {
+    _tgt.linkedSessionShots = [];
+  }
+  renderTargetStats();
 };
 
 window.deleteTargetSession = async (id, e) => {
