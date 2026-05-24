@@ -4912,7 +4912,7 @@ window.onTgtBatchChange = async (val, keepSession=false) => {
   // If restoring a saved session with a pre-selected range session, load its shots
   if (_tgt.rangeSessionId) {
     const sess = sessions.find(s => s.id == _tgt.rangeSessionId);
-    _tgt.linkedSessionShots = (sess?.shots||[]).filter(sh=>sh?.velocity>0);
+    _tgt.linkedSessionShots = (sess?.shots||[]).map((sh,i)=>({...sh,num:sh.num??i+1})).filter(sh=>sh.velocity>0);
   }
 };
 
@@ -4921,7 +4921,7 @@ window.onTgtRangeSessChange = async val => {
   if (val && _tgt.batchId) {
     const batch = await dbGet('batches', _tgt.batchId);
     const sess = batch ? migrateToRangeSessions(batch).find(s => s.id == val) : null;
-    _tgt.linkedSessionShots = (sess?.shots||[]).filter(sh=>sh?.velocity>0);
+    _tgt.linkedSessionShots = (sess?.shots||[]).map((sh,i)=>({...sh,num:sh.num??i+1})).filter(sh=>sh.velocity>0);
   } else {
     _tgt.linkedSessionShots = [];
   }
