@@ -367,6 +367,19 @@ textarea.form-control{min-height:80px;resize:vertical;}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 #toast.success{border-color:var(--success);color:var(--success);}
 #toast.error{border-color:var(--danger);color:var(--danger);}
+.vel-drum-container{position:relative;height:220px;overflow:hidden;background:var(--bg);border:1px solid var(--border);}
+.vel-drum-container::before,.vel-drum-container::after{content:'';position:absolute;left:0;right:0;height:88px;z-index:2;pointer-events:none;}
+.vel-drum-container::before{top:0;background:linear-gradient(to bottom,var(--bg) 40%,transparent);}
+.vel-drum-container::after{bottom:0;background:linear-gradient(to top,var(--bg) 40%,transparent);}
+.vel-drum-sel{position:absolute;top:50%;left:0;right:0;height:44px;transform:translateY(-50%);border-top:1.5px solid var(--accent);border-bottom:1.5px solid var(--accent);z-index:1;pointer-events:none;}
+.vel-drum{height:100%;overflow-y:scroll;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:88px 0;}
+.vel-drum::-webkit-scrollbar{display:none;}
+.vel-drum-item{height:44px;display:flex;align-items:center;justify-content:center;scroll-snap-align:center;font-family:'Share Tech Mono',monospace;font-size:26px;color:var(--ink);}
+.vel-drum-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);}
+.vel-drum-header .det-velo-label{font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;font-weight:700;}
+.vel-drum-readout-wrap{display:flex;align-items:baseline;gap:4px;}
+.vel-drum-readout{font-family:'Share Tech Mono',monospace;font-size:22px;color:var(--ink);}
+.vel-drum-fps-lbl{font-size:10px;color:var(--muted);letter-spacing:1px;}
 @media print{#bottom-nav,#top-bar .action-btn,.tabs,.btn,.back-btn{display:none !important;}#view{padding:0;}}
 #target-canvas-wrap{position:relative;width:100%;touch-action:none;
   background:#1a1a1a;overflow:hidden;border:1px solid var(--border);
@@ -3191,8 +3204,10 @@ routes['range-card'] = async ({id}) => {
   const sessFirearmId = activeSess?.firearm_id || batch.firearm_id || '';
   const sessBarrel    = activeSess?.range_barrel_length ?? batch.range_barrel_length ?? null;
   const sessLabel     = activeSess?.range_firearm_label || batch.range_firearm_label || '';
-  const sessCond      = activeSess?.conditions || batch.range_conditions || {};
-  const sessDate      = activeSess?.range_date || batch.range_date || new Date().toISOString().slice(0,10);
+  const sessCond          = activeSess?.conditions || batch.range_conditions || {};
+  const sessDate          = activeSess?.range_date || batch.range_date || new Date().toISOString().slice(0,10);
+  const sessShootingPos   = activeSess?.shooting_position ?? null;
+  const sessEstVelo       = activeSess?.sess_est_velo ?? null;
 
   const matchedFirearm = firearms.find(f=>f.name===sessFirearmId) || null;
   const isManualMode = sessFirearmId==='__manual__' || (!matchedFirearm && (sessBarrel!=null || firearms.length===0));
@@ -3323,6 +3338,28 @@ routes['range-card'] = async ({id}) => {
         <div class="rc-env-cell">
           <label>Elevation ft</label>
           <input id="rc-env-elev" type="number" inputmode="numeric" value="${sessCond.elevation??0}">
+        </div>
+      </div>
+
+      <!-- Shooting position + Estimated velocity -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border)">
+        <div style="padding:10px 14px;border-right:1px solid var(--border)">
+          <div class="rc-label">Shooting Position</div>
+          <select class="form-control" id="rc-shooting-pos" style="padding:7px 10px;font-size:14px;margin-top:5px;border-radius:0;border-left-width:2px">
+            <option value="">— Select —</option>
+            <option value="prone" ${sessShootingPos==='prone'?'selected':''}>Prone</option>
+            <option value="bench" ${sessShootingPos==='bench'?'selected':''}>Bench</option>
+            <option value="standing" ${sessShootingPos==='standing'?'selected':''}>Standing</option>
+            <option value="kneeling" ${sessShootingPos==='kneeling'?'selected':''}>Kneeling</option>
+            <option value="sitting" ${sessShootingPos==='sitting'?'selected':''}>Sitting</option>
+          </select>
+        </div>
+        <div style="padding:10px 14px">
+          <div class="rc-label">Est. Velocity <span style="font-size:9px;color:var(--muted2);font-weight:600;letter-spacing:.5px">DRUM FALLBACK</span></div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+            <input class="form-control" id="rc-est-velo" type="number" inputmode="numeric" step="1" placeholder="e.g. 2850" value="${sessEstVelo??''}" style="padding:7px 10px;font-size:14px;border-radius:0;border-left-width:2px;flex:1">
+            <span style="font-size:11px;color:var(--muted);letter-spacing:1px">FPS</span>
+          </div>
         </div>
       </div>
 
@@ -3466,13 +3503,17 @@ window.openShotDetail = async (batchId, idx) => {
     <div class="shot-detail-body">
 
       <div class="det-velo-wrap ${hasVelo?'filled':''}" id="det-velo-wrap">
-        <div class="det-velo-label">Chronograph Velocity</div>
-        <input class="det-velo-input ${hasVelo?'filled':''}" id="det-velo-input" type="number" inputmode="numeric" step="1"
-          placeholder="0000" value="${hasVelo?Math.round(shot.velocity):''}"
-          oninput="onDetVeloInput(${idx})"
-          onfocus="document.getElementById('det-velo-wrap').classList.add('active')"
-          onblur="document.getElementById('det-velo-wrap').classList.remove('active')">
-        <div class="det-velo-fps">FPS</div>
+        <div class="vel-drum-header">
+          <div class="det-velo-label">Chronograph Velocity</div>
+          <div class="vel-drum-readout-wrap">
+            <span class="vel-drum-readout" id="vel-drum-readout">${hasVelo?Math.round(shot.velocity):'—'}</span>
+            <span class="vel-drum-fps-lbl">FPS</span>
+          </div>
+        </div>
+        <div class="vel-drum-container">
+          <div class="vel-drum-sel"></div>
+          <div class="vel-drum" id="vel-drum" onscroll="onDrumScroll(${idx})"></div>
+        </div>
       </div>
 
       <div class="det-exp-wrap" id="det-exp-wrap">
@@ -3540,7 +3581,8 @@ window.openShotDetail = async (batchId, idx) => {
     </div>
   `;
   document.body.appendChild(overlay);
-  setTimeout(()=>document.getElementById('det-velo-input')?.focus(),100);
+  const _sessEstVelo=_rcSession.sessions?.find(s=>s.id===_rcSession.activeSessId)?.sess_est_velo??null;
+  setTimeout(()=>initVelDrum(av,hasVelo?Math.round(shot.velocity):null,_sessEstVelo,idx),50);
   window._currentDetailIdx=idx;
   window._currentDetailBatchId=batchId;
   window._currentDetailBatch=batch;
@@ -3549,30 +3591,45 @@ window.openShotDetail = async (batchId, idx) => {
   window._currentDetailAv=av;
 };
 
-window.onDetVeloInput = idx => {
-  const input=document.getElementById('det-velo-input'); if (!input) return;
-  const v=parseFloat(input.value), hasVal=!isNaN(v)&&v>0;
-  input.classList.toggle('filled',hasVal);
-  document.getElementById('det-velo-wrap')?.classList.toggle('filled',hasVal);
-  if (!_rcSession.shots[idx]) _rcSession.shots[idx]={velocity:0,field_notes:''};
-  _rcSession.shots[idx].velocity=hasVal?v:0;
+window.onDrumScroll = idx => {
+  const drum=document.getElementById('vel-drum'); if(!drum) return;
+  const minVal=parseInt(drum.dataset.minVal||'0');
+  const v=minVal+Math.round(drum.scrollTop/44);
+  const readout=document.getElementById('vel-drum-readout');
+  if(readout) readout.textContent=v;
+  if(!_rcSession.shots[idx]) _rcSession.shots[idx]={velocity:0,field_notes:''};
+  _rcSession.shots[idx].velocity=v;
+  document.getElementById('det-velo-wrap')?.classList.add('filled');
   updateRangeLiveStats();
-  // Live update Expected-MV delta block
   const av=window._currentDetailAv;
   const deltaEl=document.getElementById('det-exp-delta');
-  if (deltaEl) {
-    if (hasVal && av!=null) {
+  if(deltaEl){
+    if(av!=null){
       const d=Math.round(v-av);
       deltaEl.style.display='';
       deltaEl.classList.remove('pos','neg');
       deltaEl.classList.add(d>=0?'pos':'neg');
       deltaEl.innerHTML=`<span class="det-exp-delta-lbl">Δ vs Expected</span>${d>=0?'+':''}${d} fps`;
-    } else {
-      deltaEl.style.display='none';
-    }
+    } else { deltaEl.style.display='none'; }
   }
   refreshRowExpected(idx);
 };
+
+function initVelDrum(centerVal, currentVal, sessEstVelo, idx) {
+  const drum=document.getElementById('vel-drum'); if(!drum) return;
+  const cv=centerVal??sessEstVelo;
+  if(cv==null){
+    drum.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:11px;letter-spacing:1px;text-align:center;padding:0 20px;gap:8px"><div style="font-weight:700">NO VELOCITY REFERENCE</div><div style="color:var(--muted2);font-size:10px">Set Expected Velocity<br>in session setup to<br>enable drum picker</div></div>';
+    return;
+  }
+  const minVal=cv-250, maxVal=cv+250;
+  drum.dataset.minVal=minVal;
+  let html='';
+  for(let v=minVal;v<=maxVal;v++) html+=`<div class="vel-drum-item">${v}</div>`;
+  drum.innerHTML=html;
+  const target=currentVal!=null?currentVal:cv;
+  drum.scrollTop=(target-minVal)*44;
+}
 
 function _saveShotDetailToSession(idx) {
   const veloEl=document.getElementById('det-velo-input');
@@ -3641,6 +3698,9 @@ window.commitRangeSession = async batchId => {
     humidity:  parseFloat(document.getElementById('rc-env-hum')?.value)||50,
     elevation: parseFloat(document.getElementById('rc-env-elev')?.value)||0,
   };
+  const shootingPos=document.getElementById('rc-shooting-pos')?.value||null;
+  const estVeloRaw=document.getElementById('rc-est-velo')?.value;
+  const sessEstVeloSave=estVeloRaw?parseFloat(estVeloRaw)||null:null;
 
   // Update active session with DOM data
   const cur=_rcSession.sessions.find(s=>s.id===_rcSession.activeSessId);
@@ -3648,6 +3708,8 @@ window.commitRangeSession = async batchId => {
     cur.shots=shots; cur.range_date=rangeDate; cur.firearm_id=sessFirearmId;
     cur.range_firearm_label=sessLabel; cur.range_barrel_length=sessBarrel;
     cur.conditions=conditions;
+    cur.shooting_position=shootingPos;
+    cur.sess_est_velo=sessEstVeloSave;
   }
 
   // Persist all sessions; keep batch.shots for backwards compat
@@ -3685,6 +3747,8 @@ window.newRangeSession = batchId => {
     range_firearm_label: last?.range_firearm_label||'',
     range_barrel_length: last?.range_barrel_length||null,
     conditions: last?.conditions?{...last.conditions}:{temp_f:59,humidity:50,elevation:0},
+    shooting_position: null,
+    sess_est_velo: null,
     shots: [],
     notes: '',
     created_at: new Date().toISOString(),
