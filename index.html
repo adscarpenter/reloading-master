@@ -4746,9 +4746,18 @@ function renderTargetStats() {
   const hasVelo = lShots.length > 0;
   const veloMap = Object.fromEntries(lShots.map(s=>[String(s.num), s.velocity]));
 
+  // All shot nums currently assigned to any impact across all groups
+  const allAssigned = new Set(
+    _tgt.groups.flatMap(g => g.impacts.map(i => i.shotNum)).filter(n => n != null).map(String)
+  );
+
   const buildShotOpts = (selectedNum) =>
     `<option value="">—</option>` +
-    lShots.map(s=>`<option value="${s.num}"${String(s.num)===String(selectedNum)?' selected':''}>${s.num}</option>`).join('');
+    lShots.map(s => {
+      const sel = String(s.num) === String(selectedNum);
+      const taken = !sel && allAssigned.has(String(s.num));
+      return `<option value="${s.num}"${sel?' selected':''}${taken?' style="color:var(--muted2)"':''}>${s.num}${taken?' ·':''}</option>`;
+    }).join('');
 
   const renderShotTable = (gs) => {
     return `<div style="overflow-x:auto"><table class="tgt-shot-table">
