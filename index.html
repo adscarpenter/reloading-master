@@ -1693,14 +1693,21 @@ register('batches', async () => {
   }
   if (groups.has('Other')) { const o=groups.get('Other'); groups.delete('Other'); groups.set('Other',o); }
   const renderBatchItem = b => {
-    const stats=b.shots?.length?calcStats(b.shots.map(s=>s.velocity)):null;
+    const sessions=migrateToRangeSessions(b);
+    const allVelos=sessions.flatMap(s=>(s.shots||[]).filter(sh=>sh?.velocity>0).map(sh=>sh.velocity));
+    const stats=allVelos.length?calcStats(allVelos):null;
     const isGrouped=b.group_mode&&b.group_mode!=='none';
     const isFac=b.is_factory;
     const badgeClass=isFac?'badge-factory':isGrouped?'badge-grouped':b.load_dev_type==='Charge Ladder'?'badge-ladder':'';
     const badgeText=isFac?'FAC':isGrouped?'GRP':b.load_dev_type==='Charge Ladder'?'LADDER':'';
     const subLine=isFac?`${b.factory_mfr||'—'} · ${b.factory_product||'—'}`:`${b.bullet||'—'} · ${b.powder||'—'}`;
+    const firearms=[...new Set([
+      ...(sessions.map(s=>s.firearm_id).filter(id=>id&&id!=='__manual__')),
+      ...(b.firearm_id&&b.firearm_id!=='__manual__'?[b.firearm_id]:[])
+    ])];
+    const faLine=firearms.length?`<p style="font-size:11px;color:var(--accent);margin-top:2px;letter-spacing:.5px">${firearms.join(' · ')}</p>`:'';
     return `<div class="list-item" onclick="navigate('batch/${b.id}')">
-      <div class="info"><h4>${b.id}</h4><p>${subLine}</p></div>
+      <div class="info"><h4>${b.id}</h4><p>${subLine}</p>${faLine}</div>
       ${badgeText?`<span class="badge ${badgeClass}">${badgeText}</span>`:''}
       ${stats&&stats.n>0?`<span class="badge badge-val mono">${Math.round(stats.avg)}</span>`:''}
       <span class="chevron">›</span>
