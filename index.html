@@ -903,58 +903,67 @@ register('dashboard', async () => {
     return s + migrateToRangeSessions(b).reduce((ss,sess)=>ss+(sess.shots||[]).filter(sh=>sh?.velocity>0).length, 0);
   }, 0);
 
-  // Per-firearm performance stats
+  // Per-firearm performance stats + ranked batches
+  const _dStatCol = (label, val, color='var(--ink)') =>
+    `<div style="text-align:center;padding:4px 2px">
+      <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;white-space:nowrap">${label}</div>
+      <div style="font-size:13px;font-family:'Share Tech Mono',monospace;color:${val==='—'?'var(--border2)':color};margin-top:2px">${val}</div>
+    </div>`;
+
   const faStats = firearms.map(fa => {
     const allVelos = [];
+    const batchItems = [];
     batches.forEach(b => {
-      migrateToRangeSessions(b).forEach(sess => {
-        if (sess.firearm_id === fa.name)
-          (sess.shots||[]).filter(sh=>sh?.velocity>0).forEach(sh=>allVelos.push(sh.velocity));
-      });
+      const faSessions = migrateToRangeSessions(b).filter(s => s.firearm_id === fa.name);
+      if (!faSessions.length) return;
+      const shots = faSessions.flatMap(s => (s.shots||[]).filter(sh=>sh?.velocity>0));
+      shots.forEach(sh => allVelos.push(sh.velocity));
+      const bTgts = allTgts.filter(t => t.firearm_id === fa.name && t.batch_id === b.id);
+      const tgtAgg = aggregateTgtStats(bTgts);
+      batchItems.push({ batch:b, shots, tgtAgg, ...scoreBatch(shots, tgtAgg) });
     });
-    const velStats  = allVelos.length >= 2 ? calcStats(allVelos) : null;
-    const tgtAgg    = aggregateTgtStats(allTgts.filter(t=>t.firearm_id===fa.name));
-    return { fa, velStats, tgtAgg };
-  }).filter(x => x.velStats || x.tgtAgg);
+    if (!batchItems.length) return null;
+    const ranked = [...batchItems].sort((a,b)=>a.score-b.score);
+    const velStats = allVelos.length >= 2 ? calcStats(allVelos) : null;
+    const tgtAgg  = aggregateTgtStats(allTgts.filter(t=>t.firearm_id===fa.name));
+    return { fa, velStats, tgtAgg, ranked };
+  }).filter(Boolean);
 
   const faPerfCard = faStats.length ? `
     <div class="card" style="margin-bottom:14px">
       <div class="card-header">
         <div class="marker"></div>
         <h3>Firearm Performance</h3>
-        <div class="hdr-tag">ALL SESSIONS</div>
+        <div class="hdr-tag">BEST LOAD</div>
       </div>
-      ${faStats.map(({fa, velStats, tgtAgg}) => `
-        <div onclick="navigate('firearms/results/${fa.id}')" style="
-          display:grid;grid-template-columns:1fr auto;align-items:center;
-          padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;gap:10px">
-          <div>
-            <div style="font-size:14px;font-weight:700;font-family:'Barlow Condensed',sans-serif;
-              letter-spacing:.5px;color:var(--ink)">${fa.make_model||fa.name}</div>
-            <div style="font-size:11px;color:var(--muted2);margin-top:2px;
-              font-family:'Share Tech Mono',monospace">${fa.chamber||fa.caliber||'—'}</div>
+      ${faStats.map(({fa, velStats, tgtAgg, ranked}) => {
+        const top = ranked[0];
+        const topSS = top?.ss;
+        const topTgt = top?.tgtAgg;
+        return `<div onclick="navigate('firearms/results/${fa.id}')" style="padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:15px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;color:var(--ink)">${fa.make_model||fa.name}</div>
+              <div style="font-size:11px;color:var(--muted2);margin-top:1px;font-family:'Share Tech Mono',monospace">${fa.chamber||fa.caliber||'—'}${fa.barrel_length?' · '+fa.barrel_length+'″':''}</div>
+            </div>
+            <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;padding-top:3px;flex-shrink:0">${ranked.length} BATCH${ranked.length!==1?'ES':''} ›</div>
           </div>
-          <div style="display:flex;gap:14px;align-items:center;flex-shrink:0">
-            ${tgtAgg ? `
-              <div style="text-align:right">
-                <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
-                  color:var(--muted2);font-family:'Barlow Condensed',sans-serif">Avg Group</div>
-                <div style="font-size:17px;font-weight:700;color:var(--accent);
-                  font-family:'Share Tech Mono',monospace;line-height:1.1">${tgtAgg.avgGroupMOA.toFixed(2)}</div>
-                <div style="font-size:9px;color:var(--muted2);letter-spacing:1px">MOA</div>
-              </div>` : ''}
-            ${velStats ? `
-              <div style="text-align:right;border-left:1px solid var(--border);padding-left:14px">
-                <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
-                  color:var(--muted2);font-family:'Barlow Condensed',sans-serif">SD / ES</div>
-                <div style="font-size:17px;font-weight:700;color:var(--success);
-                  font-family:'Share Tech Mono',monospace;line-height:1.1">${fmt(velStats.sd,1)}</div>
-                <div style="font-size:9px;color:var(--muted2);letter-spacing:1px">
-                  ES&nbsp;<span style="color:var(--ink)">${Math.round(velStats.es)}</span>
-                </div>
-              </div>` : ''}
-          </div>
-        </div>`).join('')}
+          ${top ? `
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+            <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted2);font-family:'Barlow Condensed',sans-serif;margin-bottom:3px">#1 LOAD</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--accent);letter-spacing:.3px">${top.batch.id}</div>
+            <div style="font-size:11px;color:var(--muted2);margin-top:2px">${top.batch.is_factory?((top.batch.factory_mfr||'')+ ' '+(top.batch.factory_product||'')).trim()||(top.batch.id):(top.batch.bullet||'—')+' · '+(top.batch.powder||'—')}</div>
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">
+              ${_dStatCol('AVG FPS', topSS?Math.round(topSS.avg):'—')}
+              ${_dStatCol('SD', topSS?topSS.sd.toFixed(1):'—', 'var(--success)')}
+              ${_dStatCol('ES', topSS?Math.round(topSS.es):'—')}
+              ${_dStatCol('GRP MOA', topTgt?topTgt.avgGroupMOA.toFixed(2):'—', 'var(--accent)')}
+              ${_dStatCol('MR MOA', topTgt?topTgt.avgMeanRadMOA.toFixed(2):'—')}
+              ${_dStatCol('SHOTS', top.shots.length||'—')}
+            </div>
+          </div>` : ''}
+        </div>`;
+      }).join('')}
     </div>` : '';
 
   render(`
