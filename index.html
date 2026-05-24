@@ -4362,7 +4362,9 @@ window.addTgtMark = () => {
   }
   if (_tgt.mode === 'impact') {
     const totalBefore = _tgt.groups.reduce((s,g)=>s+g.impacts.length,0);
-    activeTgtGroup().impacts.push({ x: imgPos.x, y: imgPos.y, num: totalBefore+1 });
+    const _usedNums=new Set(_tgt.groups.flatMap(g=>g.impacts.map(i=>i.shotNum)).filter(n=>n!=null));
+    const _nextShot=(_tgt.linkedSessionShots||[]).find(s=>!_usedNums.has(s.num));
+    activeTgtGroup().impacts.push({ x:imgPos.x, y:imgPos.y, num:totalBefore+1, shotNum:_nextShot?_nextShot.num:null });
     drawTargetCanvas(); renderTargetStats();
   }
 };
@@ -4616,7 +4618,7 @@ function calcTargetStatsForGroup(g) {
 
   const shots = g.impacts.map(imp => {
     const dx=(imp.x-g.poa.x)/pxPerIn, dy=(imp.y-g.poa.y)/pxPerIn;
-    return { num:imp.num, windage:dx, elevation:-dy, dist:Math.sqrt(dx*dx+dy*dy) };
+    return { num:imp.num, shotNum:imp.shotNum??null, windage:dx, elevation:-dy, dist:Math.sqrt(dx*dx+dy*dy) };
   });
   const cx=shots.reduce((s,sh)=>s+sh.windage,0)/shots.length;
   const cy=shots.reduce((s,sh)=>s+sh.elevation,0)/shots.length;
@@ -4731,24 +4733,35 @@ function renderTargetStats() {
     </div>`;
   }
 
-  // Shot data table (single group — same as before; multi-group — show per-group)
-  if (!multiGroup && gStats[0]) {
-    const s0 = gStats[0];
-    const hasVelo = lShots.length > 0;
-    const veloMap = Object.fromEntries(lShots.map(s=>[s.num, s.velocity]));
-    html += `<div class="section-title">Shot Data — ${s0.shots.length} Impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>
-    <div style="overflow-x:auto"><table class="tgt-shot-table">
-      <thead><tr><th>#</th><th>Dist (in)</th><th>Windage</th><th>Elev (in)</th>${hasVelo?'<th>MV (fps)</th>':''}</tr></thead>
-      <tbody>${s0.shots.map(s=>{
-        const v=hasVelo?veloMap[s.num]:null;
+  // Shot data table — single group or per-group breakdown
+  const hasVelo = lShots.length > 0;
+  const veloMap = Object.fromEntries(lShots.map(s=>[s.num, s.velocity]));
+  const shotOpts = lShots.map(s=>`<option value="${s.num}">${s.num}</option>`).join('');
+
+  const renderShotTable = (gs) => {
+    const grp = _tgt.groups.find(g=>g.id===gs.groupId);
+    return `<div style="overflow-x:auto"><table class="tgt-shot-table">
+      <thead><tr><th>IMP#</th>${hasVelo?'<th>SHOT#</th>':''}<th>Dist (in)</th><th>Windage</th><th>Elev (in)</th>${hasVelo?'<th>MV fps</th>':''}</tr></thead>
+      <tbody>${gs.shots.map((s,idx)=>{
+        const v=hasVelo&&s.shotNum!=null?veloMap[s.shotNum]:null;
+        const shotSel=hasVelo?`<td style="padding:2px 4px"><select style="font-family:'Share Tech Mono',monospace;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--border);color:var(--ink)" onchange="setImpactShotNum('${gs.groupId}',${idx},this.value)"><option value="">—</option>${shotOpts.replace(`value="${s.shotNum}"`,`value="${s.shotNum}" selected`)}</select></td>`:'';
         return `<tr>
-          <td>${s.num}</td><td>${s.dist.toFixed(3)}</td>
+          <td>${s.num}</td>${shotSel}
+          <td>${s.dist.toFixed(3)}</td>
           <td style="color:var(--info)">${Math.abs(s.windage).toFixed(3)} ${s.windage>=0?'R':'L'}</td>
           <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
-          ${hasVelo?`<td style="font-family:'Share Tech Mono',monospace;color:var(--ink)">${v!=null?Math.round(v):'—'}</td>`:''}
+          ${hasVelo?`<td style="font-family:'Share Tech Mono',monospace;font-weight:700;color:${v!=null?'var(--ink)':'var(--border2)'}">${v!=null?Math.round(v):'—'}</td>`:''}
         </tr>`;
       }).join('')}</tbody>
     </table></div>`;
+  };
+
+  if (!multiGroup && gStats[0]) {
+    html += `<div class="section-title">Shot Data — ${gStats[0].shots.length} Impacts @ ${_tgt.distYds} ${_tgt.distUnit}</div>${renderShotTable(gStats[0])}`;
+  } else if (multiGroup) {
+    gStats.forEach(gs => {
+      html += `<div class="section-title" style="margin-top:10px"><span style="display:inline-block;width:8px;height:8px;background:${gs.color};border-radius:50%;margin-right:6px"></span>${gs.label} — ${gs.shots.length} Impacts</div>${renderShotTable(gs)}`;
+    });
   }
 
   el.innerHTML = html;
@@ -4912,6 +4925,13 @@ window.onTgtRangeSessChange = async val => {
   } else {
     _tgt.linkedSessionShots = [];
   }
+  renderTargetStats();
+};
+
+window.setImpactShotNum = (groupId, impactIdx, val) => {
+  const g = _tgt.groups.find(g=>g.id===groupId);
+  if (!g || impactIdx >= g.impacts.length) return;
+  g.impacts[impactIdx].shotNum = val===''||val==null ? null : Number(val);
   renderTargetStats();
 };
 
