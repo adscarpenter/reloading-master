@@ -4735,22 +4735,27 @@ function renderTargetStats() {
 
   // Shot data table — single group or per-group breakdown
   const hasVelo = lShots.length > 0;
-  const veloMap = Object.fromEntries(lShots.map(s=>[s.num, s.velocity]));
-  const shotOpts = lShots.map(s=>`<option value="${s.num}">${s.num}</option>`).join('');
+  const veloMap = Object.fromEntries(lShots.map(s=>[String(s.num), s.velocity]));
+
+  const buildShotOpts = (selectedNum) =>
+    `<option value="">—</option>` +
+    lShots.map(s=>`<option value="${s.num}"${String(s.num)===String(selectedNum)?' selected':''}>${s.num}</option>`).join('');
 
   const renderShotTable = (gs) => {
-    const grp = _tgt.groups.find(g=>g.id===gs.groupId);
     return `<div style="overflow-x:auto"><table class="tgt-shot-table">
-      <thead><tr><th>IMP#</th>${hasVelo?'<th>SHOT#</th>':''}<th>Dist (in)</th><th>Windage</th><th>Elev (in)</th>${hasVelo?'<th>MV fps</th>':''}</tr></thead>
+      <thead><tr><th>IMP#</th><th>Dist (in)</th><th>Windage</th><th>Elev (in)</th>${hasVelo?'<th>SHOT# → MV</th>':''}</tr></thead>
       <tbody>${gs.shots.map((s,idx)=>{
-        const v=hasVelo&&s.shotNum!=null?veloMap[s.shotNum]:null;
-        const shotSel=hasVelo?`<td style="padding:2px 4px"><select style="font-family:'Share Tech Mono',monospace;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--border);color:var(--ink)" onchange="setImpactShotNum('${gs.groupId}',${idx},this.value)"><option value="">—</option>${shotOpts.replace(`value="${s.shotNum}"`,`value="${s.shotNum}" selected`)}</select></td>`:'';
+        const v = hasVelo && s.shotNum!=null ? veloMap[String(s.shotNum)] : null;
+        const shotCell = hasVelo ? `<td style="white-space:nowrap;padding:3px 6px">
+          <select style="font-family:'Share Tech Mono',monospace;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--border);color:var(--ink)" onchange="setImpactShotNum('${gs.groupId}',${idx},this.value)">${buildShotOpts(s.shotNum)}</select>
+          ${v!=null?`<span style="font-family:'Share Tech Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);margin-left:6px">${Math.round(v)}<span style="font-size:10px;font-weight:400;color:var(--muted2)"> fps</span></span>`:`<span style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--border2);margin-left:6px">—</span>`}
+        </td>` : '';
         return `<tr>
-          <td>${s.num}</td>${shotSel}
+          <td>${s.num}</td>
           <td>${s.dist.toFixed(3)}</td>
           <td style="color:var(--info)">${Math.abs(s.windage).toFixed(3)} ${s.windage>=0?'R':'L'}</td>
           <td style="color:${s.elevation>=0?'var(--success)':'var(--danger)'}">${s.elevation>=0?'+':''}${s.elevation.toFixed(3)}</td>
-          ${hasVelo?`<td style="font-family:'Share Tech Mono',monospace;font-weight:700;color:${v!=null?'var(--ink)':'var(--border2)'}">${v!=null?Math.round(v):'—'}</td>`:''}
+          ${shotCell}
         </tr>`;
       }).join('')}</tbody>
     </table></div>`;
