@@ -959,7 +959,7 @@ register('dashboard', async () => {
               ${_dStatCol('ES', topSS?Math.round(topSS.es):'—')}
               ${_dStatCol('GRP MOA', topTgt?topTgt.avgGroupMOA.toFixed(2):'—', 'var(--accent)')}
               ${_dStatCol('MR MOA', topTgt?topTgt.avgMeanRadMOA.toFixed(2):'—')}
-              ${_dStatCol('SHOTS', top.shots.length||'—')}
+              ${_dStatCol(topTgt?'IMPACTS':'VEL RDS', topTgt?(topTgt.totalShots||top.shots.length||'—'):(top.shots.length||'—'))}
             </div>
           </div>` : ''}
         </div>`;
@@ -1682,7 +1682,7 @@ window.deleteComponent = async (id) => { if (!confirm_('Remove this component?')
 // ════════════════════════════════════════════════════
 register('batches', async () => {
   setTitle('BATCHES', false, `<button class="action-btn" onclick="navigate('batches/new')">${ICONS.plus} NEW</button>`);
-  const batches=await dbGetAll('batches');
+  const [batches, allTgtSess]=await Promise.all([dbGetAll('batches'),dbGetAll('target_sessions')]);
   if (!batches.length) {
     render(`<div class="empty-state">
       <div class="empty-icon">${ICONS.doc}</div>
@@ -1711,6 +1711,8 @@ register('batches', async () => {
     const stats=allVelos.length?calcStats(allVelos):null;
     const allGrpMOA=sessions.flatMap(s=>(s.target_groups||[]).map(g=>g.groupSizeMOA).filter(v=>v>0));
     const avgGrpMOA=allGrpMOA.length?(allGrpMOA.reduce((a,v)=>a+v,0)/allGrpMOA.length):null;
+    const bTgts=allTgtSess.filter(t=>t.batch_id===b.id);
+    const impactCt=bTgts.reduce((s,t)=>s+(t.stats_shot_count||0),0);
     const loadedCt=(b.cartridges||[]).filter(c=>c.loaded).length;
     const totalCt=b.cartridge_count||b.cartridges?.length||0;
     const isGrouped=b.group_mode&&b.group_mode!=='none';
@@ -1737,10 +1739,10 @@ register('batches', async () => {
       </div>
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
         ${_bStatCol('LOADED', isFac?'—':(totalCt?`${loadedCt}/${totalCt}`:'—'))}
-        ${_bStatCol('FIRED', allVelos.length||'—')}
+        ${_bStatCol('VEL RDS', allVelos.length||'—')}
+        ${_bStatCol('IMPACTS', impactCt||'—')}
         ${_bStatCol('AVG FPS', stats?Math.round(stats.avg):'—')}
         ${_bStatCol('SD', stats?stats.sd.toFixed(1):'—')}
-        ${_bStatCol('ES', stats?Math.round(stats.es):'—')}
         ${_bStatCol('GRP MOA', avgGrpMOA?avgGrpMOA.toFixed(2):'—')}
       </div>
     </div>`;
