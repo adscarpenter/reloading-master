@@ -841,7 +841,11 @@ function generateCartridges(batch) {
     if (isLadder&&batch.charge_min!=null){const s=count>1?(batch.charge_max-batch.charge_min)/(count-1):0;charge=parseFloat((batch.charge_min+s*i).toFixed(2));}
     if (isSeat  &&batch.charge_min!=null){const s=count>1?(batch.charge_max-batch.charge_min)/(count-1):0;coal=parseFloat((batch.charge_min+s*i).toFixed(4));}
     if (isJump  &&batch.jump_min  !=null){const s=count>1?(batch.jump_max-batch.jump_min)/(count-1):0;jump=parseFloat((batch.jump_min+s*i).toFixed(4));}
-    return { num:i+1, group_idx:null, group_label:null, charge:ex.charge??charge, coal:ex.coal??coal, jump:ex.jump??jump, loaded:ex.loaded??false, notes:ex.notes??'' };
+    return { num:i+1, group_idx:null, group_label:null,
+      charge: isLadder ? charge : (ex.charge??charge),
+      coal:   isSeat   ? coal   : (ex.coal??coal),
+      jump:   isJump   ? jump   : (ex.jump??jump),
+      loaded:ex.loaded??false, notes:ex.notes??'' };
   });
 }
 
