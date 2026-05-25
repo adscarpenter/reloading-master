@@ -390,6 +390,19 @@ textarea.form-control{min-height:80px;resize:vertical;}
 .det-fund-btn.active.good{background:var(--success);border-color:var(--success);color:#000;}
 .det-fund-btn.active.fair{background:var(--accent);border-color:var(--accent);color:#000;}
 .det-fund-btn.active.poor{background:var(--danger);border-color:var(--danger);color:#fff;}
+.rc-targets-section{border-top:1px solid var(--border);padding:12px 14px;}
+.rc-targets-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.rc-targets-title{font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;font-weight:700;}
+.rc-targets-add{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--accent);background:none;border:1px solid var(--accent);border-radius:4px;padding:4px 10px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;}
+.rc-tgt-cards{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;}
+.rc-tgt-cards::-webkit-scrollbar{display:none;}
+.rc-tgt-card{min-width:100px;border:1px solid var(--border);border-radius:4px;padding:10px 12px;cursor:pointer;background:var(--surface);flex-shrink:0;transition:border-color .15s;}
+.rc-tgt-card:active{border-color:var(--accent);}
+.rc-tgt-dist{font-family:'Share Tech Mono',monospace;font-size:18px;font-weight:700;color:var(--ink);}
+.rc-tgt-moa{font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.5px;margin-top:2px;}
+.rc-tgt-shots{font-size:10px;color:var(--muted);letter-spacing:.5px;margin-top:4px;}
+.rc-tgt-new{min-width:80px;border:1px dashed var(--border);border-radius:4px;padding:10px 12px;cursor:pointer;background:transparent;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--muted);transition:border-color .15s,color .15s;}
+.rc-tgt-new:active{border-color:var(--accent);color:var(--accent);}
 @media print{#bottom-nav,#top-bar .action-btn,.tabs,.btn,.back-btn{display:none !important;}#view{padding:0;}}
 #target-canvas-wrap{position:relative;width:100%;touch-action:none;
   background:#1a1a1a;overflow:hidden;border:1px solid var(--border);
@@ -521,22 +534,6 @@ textarea.form-control{min-height:80px;resize:vertical;}
         </svg>
       </div>
       BATCH
-    </button>
-
-    <button class="nav-item" data-route="target">
-      <div class="nav-top"></div>
-      <div class="nav-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
-          <circle cx="12" cy="12" r="9"/>
-          <circle cx="12" cy="12" r="5"/>
-          <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-          <line x1="12" y1="2" x2="12" y2="5"/>
-          <line x1="12" y1="19" x2="12" y2="22"/>
-          <line x1="2" y1="12" x2="5" y2="12"/>
-          <line x1="19" y1="12" x2="22" y2="12"/>
-        </svg>
-      </div>
-      TARGET
     </button>
 
     <button class="nav-item" data-route="import">
@@ -3391,6 +3388,17 @@ routes['range-card'] = async ({id}) => {
       <!-- Shot rows -->
       <div id="rc-shot-rows">${shotRowsHtml}</div>
 
+      <!-- Session Targets -->
+      <div class="rc-targets-section">
+        <div class="rc-targets-head">
+          <div class="rc-targets-title">Session Targets</div>
+          <button class="rc-targets-add" onclick="newRcTarget('${id}','${_rcSession.activeSessId}')">+ NEW TARGET</button>
+        </div>
+        <div class="rc-tgt-cards" id="rc-tgt-cards">
+          <div style="font-size:11px;color:var(--muted2);font-family:'Share Tech Mono',monospace">Loading…</div>
+        </div>
+      </div>
+
       <!-- Commit -->
       <div class="rc-commit-bar">
         ${mkBtn('SAVE TO BATCH','btn-primary',`commitRangeSession('${id}')`, 'save')}
@@ -3402,6 +3410,56 @@ routes['range-card'] = async ({id}) => {
 
   updateRangeRDSBar(batch, getEffectiveRangeFirearm());
   updateRangeLiveStats();
+  renderRcTargets(id, _rcSession.activeSessId);
+};
+
+async function renderRcTargets(batchId, sessId) {
+  const el = document.getElementById('rc-tgt-cards'); if (!el) return;
+  const all = await dbGetAll('target_sessions');
+  const linked = all.filter(s => s.batch_id === batchId && s.range_session_id === sessId);
+  linked.sort((a,b) => (b.created_at||'') > (a.created_at||'') ? 1 : -1);
+  const cards = linked.map(s => {
+    const dist = `${s.distance||'?'}${s.distance_unit||'yds'}`;
+    const moa = s.stats_group_moa != null ? `${s.stats_group_moa.toFixed(2)} MOA` : 'no scale';
+    const shots = s.stats_shot_count || s.groups?.reduce((n,g)=>n+g.impacts.length,0) || 0;
+    return `<div class="rc-tgt-card" onclick="openRcTarget(${s.id},'${batchId}')">
+      <div class="rc-tgt-dist">${dist}</div>
+      <div class="rc-tgt-moa">${moa}</div>
+      <div class="rc-tgt-shots">${shots} shots</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = (cards || '<div style="font-size:11px;color:var(--muted2);font-family:\'Share Tech Mono\',monospace">NO TARGETS YET</div>') +
+    `<div class="rc-tgt-new" onclick="newRcTarget('${batchId}','${sessId}')">+</div>`;
+}
+
+window.openRcTarget = async (id, batchId) => {
+  _tgt._fromRangeCard = batchId;
+  await loadTargetSession(id);
+};
+
+window.newRcTarget = async (batchId, sessId) => {
+  const batch = await dbGet('batches', batchId);
+  const sess = batch ? migrateToRangeSessions(batch).find(s=>s.id===sessId) : null;
+  const hasUnsaved = !_tgt.savedId && _tgt.groups.some(g=>g.impacts.length>0);
+  if (hasUnsaved && !confirm_('Start new target? Unsaved marks will be lost.')) return;
+  Object.assign(_tgt, {
+    image:null, imageData:null, scale:null, scaleP1:null, scaleP2:null,
+    savedId:null, sessionName:'',
+    batchId, rangeSessionId: sessId,
+    rangeDate: sess?.range_date || new Date().toISOString().slice(0,10),
+    rangeTime: sess?.range_time || '',
+    firearmdId: (sess?.firearm_id && sess.firearm_id !== '__manual__') ? sess.firearm_id : '',
+    distYds:100, distUnit:'yds',
+    mode:'scale1', panX:0, panY:0, zoom:1,
+    groups:[{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}],
+    activeGroupId:'g0', selectedGroupId:null, selectedImpactIdx:-1,
+    linkedSessionShots:[],
+    _fromRangeCard: batchId,
+  });
+  if (sess) {
+    _tgt.linkedSessionShots = (sess.shots||[]).map((sh,i)=>({...sh,num:sh.num??i+1})).filter(sh=>sh.velocity>0);
+  }
+  navigate('target');
 };
 
 function updateRangeRDSBar(batch, firearm) {
@@ -3985,6 +4043,7 @@ let _tgt = {
   activePointers: {}, lastPinchDist: null,
   lastPinchMidX: null, lastPinchMidY: null,
   isPanning: false, panStart: null,
+  _fromRangeCard: null,
 };
 
 const activeTgtGroup = () => _tgt.groups.find(g=>g.id===_tgt.activeGroupId)||_tgt.groups[0];
@@ -4030,7 +4089,9 @@ window.deleteTgtGroup = id => {
 };
 
 register('target', async () => {
-  setTitle('TARGET', false, `<button class="action-btn" onclick="newTargetSession()" style="margin-right:6px">${ICONS.plus} NEW</button><button class="action-btn" onclick="saveTargetSession()" style="margin-right:6px">${ICONS.save} SAVE</button><button class="action-btn" onclick="exportTargetSession()">${ICONS.export} EXPORT</button>`);
+  const _rcBatchId = _tgt._fromRangeCard;
+  setTitle('TARGET', !!_rcBatchId, `<button class="action-btn" onclick="newTargetSession()" style="margin-right:6px">${ICONS.plus} NEW</button><button class="action-btn" onclick="saveTargetSession()" style="margin-right:6px">${ICONS.save} SAVE</button><button class="action-btn" onclick="exportTargetSession()">${ICONS.export} EXPORT</button>`);
+  if (_rcBatchId) document.getElementById('back-btn').onclick = () => navigate('range-card/' + _rcBatchId);
   const batches = await dbGetAll('batches');
   const batchOpts = batches.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
     .map(b=>`<option value="${b.id}" ${b.id===_tgt.batchId?'selected':''}>${b.id}</option>`).join('');
@@ -4715,6 +4776,7 @@ window.newTargetSession = () => {
     mode:'scale1', panX:0, panY:0, zoom:1,
     groups:[{id:'g0',label:'G1',color:TGT_GROUP_COLORS[0],poa:null,impacts:[]}],
     activeGroupId:'g0', selectedGroupId:null, selectedImpactIdx:-1,
+    _fromRangeCard: null,
   });
   navigate('target');
 };
